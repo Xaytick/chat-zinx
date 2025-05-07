@@ -1,0 +1,10 @@
+{
+  "Name": "ChatServer",
+  "Host": "0.0.0.0",
+  "TcpPort": 9000,
+  "Version": "V1.0",
+  "MaxConn": 1000,
+  "MaxPackageSize": 8192,
+  "WorkerPoolSize": 20,
+  "MaxTaskLen": 1024
+} 
