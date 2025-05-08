@@ -18,8 +18,6 @@ func (r *LoginRouter) PreHandle(request ziface.IRequest) {
 	// 这里可以验证token签名、IP黑名单等
 }
 
-
-
 // 核心登录业务
 func (lr *LoginRouter) Handle(request ziface.IRequest) {
 	var payload struct {
@@ -32,10 +30,11 @@ func (lr *LoginRouter) Handle(request ziface.IRequest) {
 		return
 	}
 	// TODO: 调用用户服务验证用户名/密码
-	// 验证成功后，将 userID 写入 Conn 属性，示例：
-	// request.GetConnection().SetProperty("userID", userID)
+	userID := payload.Username
+	// 验证成功后，将 userID 写入 Conn 属性
+	request.GetConnection().SetProperty("userID", userID)
 	// 并回复客户端登录结果
-	resp := map[string]interface{}{"code":0, "msg":"登录成功"}
+	resp := map[string]interface{}{"code": 0, "msg": "登录成功"}
 	data, _ := json.Marshal(resp)
 	request.GetConnection().SendMsg(protocol.MsgIDLoginReq, data)
 }
@@ -44,4 +43,3 @@ func (lr *LoginRouter) Handle(request ziface.IRequest) {
 func (lr *LoginRouter) PostHandle(request ziface.IRequest) {
 	// 这里可以记录登录日志、踢下线等
 }
-
