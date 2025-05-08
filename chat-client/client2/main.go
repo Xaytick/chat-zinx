@@ -17,11 +17,11 @@ func main() {
 
 	// 构造登录请求
 	req := map[string]string{
-		"username": "testuser1",
+		"username": "testuser2",
 		"password": "123456",
 	}
 	body, _ := json.Marshal(req)
-	msgID := protocol.MsgIDLoginReq // MsgIDLoginReq
+	msgID := protocol.MsgIDLoginReq
 	length := uint32(len(body))
 
 	// 组包
@@ -41,13 +41,13 @@ func main() {
 	conn.Read(respBody)
 	fmt.Println("服务器响应：", string(respBody))
 
-	// 构造单聊消息
+	// 构造单聊消息，发给 testuser1
 	msg := map[string]interface{}{
-		"to_user_id": "testuser2", // 目标用户ID（需和服务端绑定一致）
-		"content":    "你好！",
+		"to_user_id": "testuser1",
+		"content":    "你好, testuser1! 我是testuser2!",
 	}
 	msgBody, _ := json.Marshal(msg)
-	msgID = protocol.MsgIDTextMsg //
+	msgID = protocol.MsgIDTextMsg
 	length = uint32(len(msgBody))
 
 	// 组包
@@ -59,10 +59,26 @@ func main() {
 	// 发送单聊消息
 	conn.Write(msgBuf)
 
-	// 读取单聊响应（如果有）
-	conn.Read(head)
-	respLen = binary.LittleEndian.Uint32(head[0:4])
-	respBody = make([]byte, respLen)
-	conn.Read(respBody)
-	fmt.Println("服务器响应：", string(respBody))
+	// 新开一个 goroutine 循环读取服务器推送的消息
+	go func() {
+		for {
+			head := make([]byte, 8)
+			if _, err := conn.Read(head); err != nil {
+				fmt.Println("连接关闭或读取出错:", err)
+				return
+			}
+			// 读取消息体长度
+			respLen := binary.LittleEndian.Uint32(head[0:4])
+			// 读取消息体
+			respBody := make([]byte, respLen)
+			if _, err := conn.Read(respBody); err != nil {
+				fmt.Println("连接关闭或读取出错:", err)
+				return
+			}
+			fmt.Println("服务器推送：", string(respBody))
+		}
+	}()
+
+	// 阻塞，防止主程序退出
+	select {}
 }

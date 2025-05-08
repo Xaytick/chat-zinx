@@ -6,9 +6,10 @@ import (
 
 	"github.com/Xaytick/chat-zinx/chat-server/global"
 	"github.com/Xaytick/chat-zinx/chat-server/pkg/protocol"
+	"github.com/Xaytick/chat-zinx/chat-server/pkg/storage"
 	"github.com/Xaytick/zinx/ziface"
 	"github.com/Xaytick/zinx/znet"
-)	
+)
 
 type TextMsgRouter struct {
 	znet.BaseRouter
@@ -30,7 +31,7 @@ func (r *TextMsgRouter) Handle(request ziface.IRequest) {
 	found := false
 	for _, conn := range connManager.All() {
 		if v, err := conn.GetProperty("userID"); err == nil && v == msg.ToUserID {
-			// 4. 转发消息
+			// 4. 目标用户在线，直接转发消息
 			conn.SendMsg(protocol.MsgIDTextMsg, request.GetData())
 			found = true
 			break
@@ -38,8 +39,7 @@ func (r *TextMsgRouter) Handle(request ziface.IRequest) {
 	}
 
 	if !found {
-		// 目标用户不在线，可以提示或存储离线消息
-		// 这里只是简单打印
-		println("用户", msg.ToUserID, "不在线")
+		// 5. 目标用户不在线，存储为离线消息
+		storage.SaveOfflineMsg(msg.ToUserID, string(request.GetData()))
 	}
 }
