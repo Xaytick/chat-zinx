@@ -47,7 +47,7 @@ func main() {
 		"content":    "你好！",
 	}
 	msgBody, _ := json.Marshal(msg)
-	msgID = protocol.MsgIDTextMsg // 从 chat-server 的 protocol 包引入
+	msgID = protocol.MsgIDTextMsg //
 	length = uint32(len(msgBody))
 
 	// 组包
