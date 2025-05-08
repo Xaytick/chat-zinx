@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/Xaytick/chat-server/global"
-	"github.com/Xaytick/chat-server/pkg/protocol"
-	"github.com/Xaytick/chat-server/router"
+	"github.com/Xaytick/chat-zinx/chat-server/global"
+	"github.com/Xaytick/chat-zinx/chat-server/pkg/protocol"
+	"github.com/Xaytick/chat-zinx/chat-server/router"
 	"github.com/Xaytick/zinx/znet"
 )
 

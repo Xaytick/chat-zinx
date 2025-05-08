@@ -1,4 +1,4 @@
-module github.com/Xaytick/chat-server
+module github.com/Xaytick/chat-zinx/chat-server
 
 go 1.24.1
 

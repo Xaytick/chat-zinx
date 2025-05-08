@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"github.com/Xaytick/chat-server/pkg/protocol"
+	"github.com/Xaytick/chat-zinx/chat-server/pkg/protocol"
 )
 
 func main() {
