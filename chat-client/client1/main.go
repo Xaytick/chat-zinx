@@ -1,86 +1,56 @@
 package main
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"net"
+	"time"
 
+	"github.com/Xaytick/chat-zinx/chat-client/pkg/client"
 	"github.com/Xaytick/chat-zinx/chat-server/pkg/protocol"
 )
 
 func main() {
-	conn, err := net.Dial("tcp", "127.0.0.1:9000")
+	// 创建客户端实例
+	cli, err := client.NewChatClient("127.0.0.1:9000")
 	if err != nil {
 		panic(err)
 	}
-	defer conn.Close()
+	defer cli.Close()
 
-	// 构造登录请求
-	req := map[string]string{
-		"username": "testuser1",
-		"password": "123456",
+	// 注册并登录用户
+	if err := cli.RegisterAndLogin("testuser1", "123456"); err != nil {
+		panic(err)
 	}
-	body, _ := json.Marshal(req)
-	// 登录请求
-	msgID := protocol.MsgIDLoginReq 
-	length := uint32(len(body))
 
-	// 组包
-	buf := make([]byte, 8+len(body))
-	binary.LittleEndian.PutUint32(buf[0:4], length)
-	binary.LittleEndian.PutUint32(buf[4:8], msgID)
-	copy(buf[8:], body)
+	// 等待一会，以便另一个客户端有时间连接和登录
+	fmt.Println("等待其他用户连接...")
+	time.Sleep(2 * time.Second)
 
-	// 发送
-	conn.Write(buf)
-
-	// 读取登录响应
-	head := make([]byte, 8)
-	conn.Read(head)
-	respLen := binary.LittleEndian.Uint32(head[0:4])
-	respBody := make([]byte, respLen)
-	conn.Read(respBody)
-	fmt.Println("服务器响应：", string(respBody))
-
-	// 构造单聊消息
-	msg := map[string]interface{}{
-		"to_user_id": "testuser2", // 目标用户ID（需和服务端绑定一致）
-		"content":    "你好, testuser2! 我是testuser1!",
+	// 发送消息给 testuser2
+	targetUsername := "testuser2"
+	fmt.Printf("发送消息给用户: %s\n", targetUsername)
+	if err := cli.SendTextMessage(targetUsername, "你好, testuser2! 我是testuser1!"); err != nil {
+		fmt.Printf("发送消息失败: %v\n", err)
+	} else {
+		fmt.Println("消息发送成功！")
 	}
-	msgBody, _ := json.Marshal(msg)
-	msgID = protocol.MsgIDTextMsg //
-	length = uint32(len(msgBody))
 
-	// 组包
-	msgBuf := make([]byte, 8+len(msgBody))
-	binary.LittleEndian.PutUint32(msgBuf[0:4], length)
-	binary.LittleEndian.PutUint32(msgBuf[4:8], msgID)
-	copy(msgBuf[8:], msgBody)
-
-	// 发送单聊消息
-	conn.Write(msgBuf)
-
-	// 新开一个 goroutine 循环读取服务器推送的消息
-	go func() {
-		for {
-			head := make([]byte, 8)
-			if _, err := conn.Read(head); err != nil {
-				fmt.Println("连接关闭或读取出错:", err)
-				return
+	// 处理接收到的消息
+	fmt.Println("等待接收消息...")
+	cli.StartMsgListener(func(msgID uint32, msgBody []byte) {
+		switch msgID {
+		case protocol.MsgIDTextMsg:
+			var msg map[string]interface{}
+			json.Unmarshal(msgBody, &msg)
+			fmt.Printf("\n收到消息: %v\n", msg)
+			if content, ok := msg["content"].(string); ok {
+				fmt.Printf("消息内容: %s\n", content)
 			}
-			// 读取消息体长度
-			respLen := binary.LittleEndian.Uint32(head[0:4])
-			// 读取消息体
-			respBody := make([]byte, respLen)
-			if _, err := conn.Read(respBody); err != nil {
-				fmt.Println("连接关闭或读取出错:", err)
-				return
-			}
-			fmt.Println("服务器推送：", string(respBody))
+		default:
+			fmt.Printf("\n收到消息 ID=%d, 内容=%s\n", msgID, string(msgBody))
 		}
-	}()
+	})
 
-	// 阻塞，防止主程序退出
+	// 阻塞主程序
 	select {}
 }

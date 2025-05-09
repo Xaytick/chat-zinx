@@ -1,4 +1,8 @@
 github.com/Xaytick/zinx v0.0.0-20250508173059-940fe4b8a9e3 h1:MJPVSxvVpO5CPW1t01EfWdAGJNPJAh+JJcbIf8PNj3E=
 github.com/Xaytick/zinx v0.0.0-20250508173059-940fe4b8a9e3/go.mod h1:SQHlC4dLrw5Mp+sBRDjL1NUxDT4LIHzq/VvUu96JCAY=
+github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
+github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
+golang.org/x/crypto v0.38.0 h1:jt+WWG8IZlBnVbomuhg2Mdq0+BBQaHbtqHEFEigjUV8=
+golang.org/x/crypto v0.38.0/go.mod h1:MvrbAqul58NNYPKnOra203SB9vpuZW0e+RRZV+Ggqjw=

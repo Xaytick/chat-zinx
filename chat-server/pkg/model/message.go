@@ -1,4 +1,4 @@
-package protocol
+package model
 
 type TextMsg struct {
 	ToUserID string `json:"to_user_id"`
