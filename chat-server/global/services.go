@@ -15,8 +15,8 @@ var (
 
 // InitServices 初始化所有服务
 func InitServices() {
-	// 初始化用户服务(目前用内存实现，后续替换为数据库)
-	UserService = service.NewInMemoryUserService()
+	// 初始化用户服务(使用MySQL实现)
+	UserService = service.NewMySQLUserService()
 
 	// 这里可以添加其他服务初始化
 }
