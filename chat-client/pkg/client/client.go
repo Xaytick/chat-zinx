@@ -7,7 +7,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/Xaytick/chat-zinx/chat-server/pkg/model"
 	"github.com/Xaytick/chat-zinx/chat-server/pkg/protocol"
 )
 
@@ -196,14 +195,6 @@ func (c *ChatClient) StartMsgListener(handler func(msgID uint32, msgBody []byte)
 			}
 
 			msgID := binary.LittleEndian.Uint32(head[4:8])
-			// 首先尝试格式化显示消息内容
-			if msgID == protocol.MsgIDTextMsg {
-				var textMsg model.TextMsg
-				if err := json.Unmarshal(body, &textMsg); err == nil {
-					fmt.Printf("\n[接收消息] 来自: %s, 内容: %s\n",
-						c.GetUsernameByID(textMsg.ToUserID), textMsg.Content)
-				}
-			}
 
 			// 调用自定义处理函数
 			handler(msgID, body)

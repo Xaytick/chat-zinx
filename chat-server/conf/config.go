@@ -87,3 +87,12 @@ func GetMySQLConfig() *MySQLConfig {
 	mysqlConfig := GlobalConfig.Database.MySQL
 	return &mysqlConfig
 }
+
+// GetRedisConfig 获取Redis配置
+func GetRedisConfig() *RedisConfig {
+	if GlobalConfig == nil {
+		return nil
+	}
+	redisConfig := GlobalConfig.Database.Redis
+	return &redisConfig
+}

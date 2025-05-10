@@ -6,6 +6,7 @@ import (
 
 	"github.com/Xaytick/chat-zinx/chat-server/conf"
 	"github.com/Xaytick/chat-zinx/chat-server/dao/mysql"
+	"github.com/Xaytick/chat-zinx/chat-server/dao/redis"
 	"github.com/Xaytick/chat-zinx/chat-server/global"
 	"github.com/Xaytick/chat-zinx/chat-server/pkg/protocol"
 	"github.com/Xaytick/chat-zinx/chat-server/router"
@@ -30,6 +31,14 @@ func main() {
 	}
 	fmt.Println("MySQL连接成功!")
 
+	// 初始化Redis连接
+	fmt.Println("初始化Redis连接...")
+	err = redis.InitRedis(conf.GetRedisConfig())
+	if err != nil {
+		log.Fatalf("初始化Redis失败: %v", err)
+	}
+	fmt.Println("Redis连接成功!")
+
 	// 3. 初始化所有服务
 	fmt.Println("初始化服务...")
 	global.InitServices()
@@ -43,8 +52,11 @@ func main() {
 	// 注册/登录路由
 	global.GlobalServer.AddRouter(protocol.MsgIDRegisterReq, &router.RegisterRouter{})
 	global.GlobalServer.AddRouter(protocol.MsgIDLoginReq, &router.LoginRouter{})
-	// 聊天相关路由
+	// 聊天消息路由
 	global.GlobalServer.AddRouter(protocol.MsgIDTextMsg, &router.TextMsgRouter{})
+	// 历史消息和聊天关系路由
+	global.GlobalServer.AddRouter(protocol.MsgIDHistoryMsgReq, &router.HistoryMsgRouter{})
+	global.GlobalServer.AddRouter(protocol.MsgIDChatRelationReq, &router.ChatRelationRouter{})
 
 	// 6. 启动服务器勾子
 	// 设置连接开始时的钩子函数

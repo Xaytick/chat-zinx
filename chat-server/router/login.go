@@ -9,7 +9,6 @@ import (
 	"github.com/Xaytick/chat-zinx/chat-server/pkg/model"
 	"github.com/Xaytick/chat-zinx/chat-server/pkg/protocol"
 	"github.com/Xaytick/chat-zinx/chat-server/pkg/service"
-	"github.com/Xaytick/chat-zinx/chat-server/pkg/storage"
 	"github.com/Xaytick/zinx/ziface"
 	"github.com/Xaytick/zinx/znet"
 )
@@ -88,16 +87,26 @@ func (lr *LoginRouter) Handle(request ziface.IRequest) {
 	sendLoginResponse(request, 0, "登录成功", responseData)
 
 	// 如果用户有离线消息，再推送离线消息
-	// 1. 先检查用户ID下是否有离线消息
+	// 1. 获取用户ID的离线消息
 	offlineMsgs := [][]byte{}
-	if storage.HasOfflineMessages(userID) {
-		offlineMsgs = append(offlineMsgs, storage.GetOfflineMessages(userID)...)
+	if global.MessageService.HasOfflineMessages(userID) {
+		msgs, err := global.MessageService.GetOfflineMessages(userID)
+		if err != nil {
+			fmt.Printf("[Redis错误] 获取离线消息失败: %v\n", err)
+		} else {
+			offlineMsgs = append(offlineMsgs, msgs...)
+		}
 	}
 
 	// 2. 再检查用户名下是否有离线消息（可能是在用户注册前发送的）
-	if storage.HasOfflineMessages(user.Username) {
+	if global.MessageService.HasOfflineMessages(user.Username) {
 		fmt.Printf("[离线消息] 发现以用户名 %s 保存的离线消息\n", user.Username)
-		offlineMsgs = append(offlineMsgs, storage.GetOfflineMessages(user.Username)...)
+		msgs, err := global.MessageService.GetOfflineMessages(user.Username)
+		if err != nil {
+			fmt.Printf("[Redis错误] 获取离线消息失败: %v\n", err)
+		} else {
+			offlineMsgs = append(offlineMsgs, msgs...)
+		}
 	}
 
 	// 3. 如果有离线消息，推送给用户
@@ -106,7 +115,7 @@ func (lr *LoginRouter) Handle(request ziface.IRequest) {
 			user.Username, userID, len(offlineMsgs))
 
 		for _, msgData := range offlineMsgs {
-			// 直接发送二进制格式的离线消息
+			// 直接推送消息，消息中已包含发送者ID
 			request.GetConnection().SendMsg(protocol.MsgIDTextMsg, msgData)
 		}
 	}

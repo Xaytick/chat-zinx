@@ -1,11 +1,13 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/Xaytick/chat-zinx/chat-client/pkg/client"
+	"github.com/Xaytick/chat-zinx/chat-server/pkg/model"
 	"github.com/Xaytick/chat-zinx/chat-server/pkg/protocol"
 )
 
@@ -22,9 +24,8 @@ func main() {
 		panic(err)
 	}
 
-	// 等待一会，以便另一个客户端有时间连接和登录
-	fmt.Println("等待其他用户连接...")
-	time.Sleep(2 * time.Second)
+	// 等待一会，确保连接完全建立
+	time.Sleep(500 * time.Millisecond)
 
 	// 发送消息给 testuser2
 	targetUsername := "testuser2"
@@ -40,11 +41,30 @@ func main() {
 	cli.StartMsgListener(func(msgID uint32, msgBody []byte) {
 		switch msgID {
 		case protocol.MsgIDTextMsg:
-			var msg map[string]interface{}
-			json.Unmarshal(msgBody, &msg)
-			fmt.Printf("\n收到消息: %v\n", msg)
-			if content, ok := msg["content"].(string); ok {
-				fmt.Printf("消息内容: %s\n", content)
+			// 尝试直接解析JSON
+			var msg model.TextMsg
+			if err := json.Unmarshal(msgBody, &msg); err == nil {
+				fromUsername := cli.GetUsernameByID(msg.FromUserID)
+				fmt.Printf("\n收到来自 %s 的消息: %s\n", fromUsername, msg.Content)
+			} else {
+				// 检查是否是Base64编码
+				msgStr := string(msgBody)
+				if isBase64(msgStr) {
+					decodedBytes, err := base64.StdEncoding.DecodeString(msgStr)
+					if err == nil {
+						// 尝试解析解码后的JSON
+						if err := json.Unmarshal(decodedBytes, &msg); err == nil {
+							fromUsername := cli.GetUsernameByID(msg.FromUserID)
+							fmt.Printf("\n收到来自 %s 的Base64编码消息: %s\n", fromUsername, msg.Content)
+						} else {
+							fmt.Printf("\n解析Base64解码后的消息失败: %v, 内容: %s\n", err, string(decodedBytes))
+						}
+					} else {
+						fmt.Printf("\nBase64解码失败: %v, 原始内容: %s\n", err, msgStr)
+					}
+				} else {
+					fmt.Printf("\n解析消息失败: %v, 原始内容: %s\n", err, string(msgBody))
+				}
 			}
 		default:
 			fmt.Printf("\n收到消息 ID=%d, 内容=%s\n", msgID, string(msgBody))
@@ -53,4 +73,11 @@ func main() {
 
 	// 阻塞主程序
 	select {}
+}
+
+// isBase64 检查字符串是否可能是Base64编码
+func isBase64(s string) bool {
+	// 简单检查: Base64字符串通常由[A-Za-z0-9+/=]组成，长度是4的倍数
+	// 并且通常以'e'开头(对应JSON的{)
+	return len(s) > 0 && len(s)%4 == 0 && s[0] == 'e' && s[1] == 'y'
 }
