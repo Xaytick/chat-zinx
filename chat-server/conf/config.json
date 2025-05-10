@@ -1,0 +1,27 @@
+{
+    "Name": "zinx-chat-server",
+    "Host": "127.0.0.1",
+    "TcpPort": 8999,
+    "MaxConn": 3000,
+    "WorkerPoolSize": 10,
+    "MaxMsgChanLen": 1024,
+    "MaxPacketSize": 4096,
+    "Database": {
+      "MySQL": {
+        "Host": "127.0.0.1",
+        "Port": 3306,
+        "User": "root",
+        "Password": "20020130",
+        "Database": "chat_app",
+        "MaxOpenConns": 100,
+        "MaxIdleConns": 10
+      },
+      "Redis": {
+        "Host": "127.0.0.1",
+        "Port": 6379,
+        "Password": "",
+        "DB": 0,
+        "MessageExpiration": 604800
+      }
+    }
+  }

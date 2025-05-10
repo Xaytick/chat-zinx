@@ -137,3 +137,4 @@ func (s *InMemoryUserService) UpdateLastLogin(userID string) error {
 	user.LastLogin = time.Now()
 	return nil
 }
+ 
