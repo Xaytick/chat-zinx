@@ -110,17 +110,32 @@ func (s *RedisMsgStorage) SaveMessage(fromUserID, toUserID string, msgData []byt
 func (s *RedisMsgStorage) GetOfflineMessages(userID string) ([][]byte, error) {
 	offlineKey := generateOfflineKey(userID)
 
-	// 获取所有离线消息
-	results, err := redis.RedisClient.LRange(redis.Ctx, offlineKey, 0, -1).Result()
+	// 使用Lua脚本实现原子性操作：获取所有消息并删除键
+	script := `
+	local messages = redis.call('LRANGE', KEYS[1], 0, -1)
+	redis.call('DEL', KEYS[1])
+	return messages
+	`
+	result, err := redis.RedisClient.Eval(redis.Ctx, script, []string{offlineKey}).Result()
 	if err != nil {
 		return nil, err
+	}
+
+	results, ok := result.([]interface{})
+	if !ok || len(results) == 0 {
+		return [][]byte{}, nil
 	}
 
 	// 转换为二进制数据
 	messages := make([][]byte, 0, len(results))
 	for _, result := range results {
+		resultStr, ok := result.(string)
+		if !ok {
+			continue
+		}
+
 		var msgMeta map[string]interface{}
-		if err := json.Unmarshal([]byte(result), &msgMeta); err != nil {
+		if err := json.Unmarshal([]byte(resultStr), &msgMeta); err != nil {
 			fmt.Printf("[Redis消息] 解析离线消息元数据失败: %v\n", err)
 			continue
 		}
@@ -155,9 +170,7 @@ func (s *RedisMsgStorage) GetOfflineMessages(userID string) ([][]byte, error) {
 		}
 	}
 
-	// 清空离线消息
-	if len(results) > 0 {
-		redis.RedisClient.Del(redis.Ctx, offlineKey)
+	if len(messages) > 0 {
 		fmt.Printf("[Redis消息] 用户ID=%s 获取离线消息，共 %d 条\n", userID, len(messages))
 	}
 
@@ -202,4 +215,50 @@ func (s *RedisMsgStorage) GetHistoryMessages(userID1, userID2 string, limit int6
 func (s *RedisMsgStorage) GetChatRelations(userID string) ([]string, error) {
 	relationKey := generateRelationKey(userID)
 	return redis.RedisClient.SMembers(redis.Ctx, relationKey).Result()
+}
+
+// SaveHistoryOnly 只保存历史消息，不保存离线消息
+// 用于当消息已直接发送给在线用户时
+func (s *RedisMsgStorage) SaveHistoryOnly(fromUserID, toUserID string, msgData []byte) error {
+	// 解析消息以便打印日志
+	var msg model.TextMsg
+	if err := json.Unmarshal(msgData, &msg); err == nil {
+		fmt.Printf("[Redis历史] 只保存历史消息: 从 %s -> %s: %s\n", fromUserID, toUserID, msg.Content)
+	}
+
+	// 构建消息元数据
+	msgMeta := map[string]interface{}{
+		"from_user_id": fromUserID,
+		"to_user_id":   toUserID,
+		"data":         msgData,
+		"timestamp":    time.Now().Unix(),
+	}
+
+	// 序列化消息元数据
+	msgMetaJson, err := json.Marshal(msgMeta)
+	if err != nil {
+		return err
+	}
+
+	// 只保存到历史消息列表 (双方查看聊天记录)
+	historyKey := generateHistoryKey(fromUserID, toUserID)
+	err = redis.RedisClient.RPush(redis.Ctx, historyKey, msgMetaJson).Err()
+	if err != nil {
+		return err
+	}
+	// 设置过期时间
+	redis.RedisClient.Expire(redis.Ctx, historyKey, s.expiration)
+
+	// 更新聊天关系列表 (记录与谁有过聊天)
+	// 发送方的关系
+	relationKey1 := generateRelationKey(fromUserID)
+	redis.RedisClient.SAdd(redis.Ctx, relationKey1, toUserID)
+	redis.RedisClient.Expire(redis.Ctx, relationKey1, s.expiration)
+
+	// 接收方的关系
+	relationKey2 := generateRelationKey(toUserID)
+	redis.RedisClient.SAdd(redis.Ctx, relationKey2, fromUserID)
+	redis.RedisClient.Expire(redis.Ctx, relationKey2, s.expiration)
+
+	return nil
 }

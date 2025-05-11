@@ -87,14 +87,24 @@ func (lr *LoginRouter) Handle(request ziface.IRequest) {
 	sendLoginResponse(request, 0, "登录成功", responseData)
 
 	// 如果用户有离线消息，再推送离线消息
-	// 1. 获取用户ID的离线消息
+	// 使用map记录已处理的消息，避免重复推送
+	processedMsgs := make(map[string]bool)
 	offlineMsgs := [][]byte{}
+
+	// 1. 先获取用户ID的离线消息（优先级更高）
 	if global.MessageService.HasOfflineMessages(userID) {
 		msgs, err := global.MessageService.GetOfflineMessages(userID)
 		if err != nil {
 			fmt.Printf("[Redis错误] 获取离线消息失败: %v\n", err)
 		} else {
-			offlineMsgs = append(offlineMsgs, msgs...)
+			for _, msg := range msgs {
+				// 使用消息内容的哈希值作为唯一标识，避免重复
+				msgKey := fmt.Sprintf("%x", msg)
+				if !processedMsgs[msgKey] {
+					processedMsgs[msgKey] = true
+					offlineMsgs = append(offlineMsgs, msg)
+				}
+			}
 		}
 	}
 
@@ -105,7 +115,14 @@ func (lr *LoginRouter) Handle(request ziface.IRequest) {
 		if err != nil {
 			fmt.Printf("[Redis错误] 获取离线消息失败: %v\n", err)
 		} else {
-			offlineMsgs = append(offlineMsgs, msgs...)
+			for _, msg := range msgs {
+				// 使用消息内容的哈希值作为唯一标识，避免重复
+				msgKey := fmt.Sprintf("%x", msg)
+				if !processedMsgs[msgKey] {
+					processedMsgs[msgKey] = true
+					offlineMsgs = append(offlineMsgs, msg)
+				}
+			}
 		}
 	}
 

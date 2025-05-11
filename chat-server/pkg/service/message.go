@@ -9,6 +9,9 @@ type IMessageService interface {
 	// SaveMessage 保存消息
 	SaveMessage(fromUserID, toUserID string, msgData []byte) error
 
+	// SaveHistoryOnly 只保存历史消息，不保存离线消息
+	SaveHistoryOnly(fromUserID, toUserID string, msgData []byte) error
+
 	// GetOfflineMessages 获取并清空用户的离线消息
 	GetOfflineMessages(userID string) ([][]byte, error)
 
@@ -37,6 +40,11 @@ func NewRedisMessageService() *RedisMessageService {
 // SaveMessage 保存消息
 func (s *RedisMessageService) SaveMessage(fromUserID, toUserID string, msgData []byte) error {
 	return s.storage.SaveMessage(fromUserID, toUserID, msgData)
+}
+
+// SaveHistoryOnly 只保存历史消息，不保存离线消息
+func (s *RedisMessageService) SaveHistoryOnly(fromUserID, toUserID string, msgData []byte) error {
+	return s.storage.SaveHistoryOnly(fromUserID, toUserID, msgData)
 }
 
 // GetOfflineMessages 获取并清空用户的离线消息

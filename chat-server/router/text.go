@@ -68,13 +68,6 @@ func (r *TextMsgRouter) Handle(request ziface.IRequest) {
 	toUsername := targetUser.Username
 	fmt.Printf("[消息路由] 准备发送消息到用户: %s(ID:%s)\n", toUsername, toUserID)
 
-	// 3. 无论用户是否在线，都将消息保存到Redis（历史记录和离线消息）
-	err = global.MessageService.SaveMessage(fromUserID.(string), toUserID, msgData)
-	if err != nil {
-		fmt.Printf("[Redis消息] 保存消息失败: %v\n", err)
-		return
-	}
-
 	// 4. 获取全局连接管理器并寻找接收者连接
 	connManager := global.GlobalServer.GetConnManager()
 	fmt.Printf("[系统状态] 当前在线连接数: %d\n", connManager.Size())
@@ -89,14 +82,32 @@ func (r *TextMsgRouter) Handle(request ziface.IRequest) {
 			if ok && userID == toUserID {
 				fmt.Printf("[消息投递] 用户 %s 在线，直接发送消息\n", toUsername)
 				// 目标用户在线，直接转发消息
-				conn.SendMsg(protocol.MsgIDTextMsg, msgData)
-				found = true
-				break
+				err := conn.SendMsg(protocol.MsgIDTextMsg, msgData)
+				if err != nil {
+					fmt.Printf("[消息发送] 发送失败: %v, 将保存为离线消息\n", err)
+				} else {
+					found = true
+					break
+				}
 			}
 		}
 	}
 
 	if !found {
-		fmt.Printf("[离线存储] 用户 %s 不在线，已存储为离线消息\n", toUsername)
+		fmt.Printf("[离线存储] 用户 %s 不在线或消息发送失败，存储为离线消息\n", toUsername)
+		// 3. 只有当用户不在线或消息发送失败时，才保存到Redis（历史记录和离线消息）
+		err = global.MessageService.SaveMessage(fromUserID.(string), toUserID, msgData)
+		if err != nil {
+			fmt.Printf("[Redis消息] 保存消息失败: %v\n", err)
+			return
+		}
+	} else {
+		// 用户在线并且消息发送成功，只保存历史记录不保存离线消息
+		err = global.MessageService.SaveHistoryOnly(fromUserID.(string), toUserID, msgData)
+		if err != nil {
+			fmt.Printf("[Redis消息] 保存历史记录失败: %v\n", err)
+			return
+		}
+		fmt.Printf("[历史记录] 用户 %s 在线且消息发送成功，只记录历史不保存离线消息\n", toUsername)
 	}
 }
