@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Xaytick/chat-zinx/chat-server/global"
+	"github.com/Xaytick/chat-zinx/chat-server/pkg/middleware"
 	"github.com/Xaytick/chat-zinx/chat-server/pkg/model"
 	"github.com/Xaytick/chat-zinx/chat-server/pkg/protocol"
 	"github.com/Xaytick/chat-zinx/chat-server/pkg/service"
@@ -16,6 +17,14 @@ import (
 // LoginRouter 处理登录请求
 type LoginRouter struct {
 	znet.BaseRouter
+	auth *middleware.AuthMiddleware
+}
+
+// NewLoginRouter 创建新的登录路由
+func NewLoginRouter() *LoginRouter {
+	return &LoginRouter{
+		auth: middleware.NewAuthMiddleware(),
+	}
 }
 
 // 登录前验证
@@ -75,12 +84,29 @@ func (lr *LoginRouter) Handle(request ziface.IRequest) {
 	request.GetConnection().SetProperty("userID", userID)
 	request.GetConnection().SetProperty("username", user.Username)
 
+	// 确保auth中间件已初始化
+	if lr.auth == nil {
+		lr.auth = middleware.NewAuthMiddleware()
+	}
+
+	// 生成JWT令牌
+	token, err := lr.auth.GenerateToken(userID, user.Username)
+	if err != nil {
+		fmt.Printf("[登录] 生成Token失败: %v\n", err)
+		sendLoginResponse(request, 6, "生成令牌失败", nil)
+		return
+	}
+
+	// 如果启用了Redis会话验证，保存会话
+	lr.auth.SaveSession(userID, token)
+
 	// 构造返回数据
 	responseData := &model.UserLoginResponse{
 		UserID:    userID,
 		Username:  user.Username,
 		Email:     user.Email,
 		LastLogin: user.LastLogin.Format(time.DateTime),
+		Token:     token, // 添加令牌
 	}
 
 	// 先回复客户端登录结果

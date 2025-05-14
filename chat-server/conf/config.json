@@ -23,5 +23,18 @@
         "DB": 0,
         "MessageExpiration": 604800
       }
+    },
+    "Auth": {
+      "JWT": {
+        "Secret": "your-jwt-secret-please-change-in-production",
+        "ExpiresIn": 86400,
+        "Issuer": "chat-zinx"
+      },
+      "Security": {
+        "TimestampTolerance": 300,
+        "NonceExpiration": 600,
+        "SessionExpiration": 86400
+      },
+      "SignatureSecret": "your-signature-secret-please-change-in-production"
     }
   }

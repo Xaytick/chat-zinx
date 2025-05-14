@@ -31,9 +31,10 @@ type UserLoginReq struct {
 
 // UserResponse 用户信息响应结构(不含敏感信息)
 type UserRegisterResponse struct {
-	UserID    string `json:"user_id"`    // 用户ID
-	Username  string `json:"username"`   // 用户名
-	Email     string `json:"email"`      // 邮箱
+	UserID   string `json:"user_id"`  // 用户ID
+	Username string `json:"username"` // 用户名
+	Email    string `json:"email"`    // 邮箱
+	Token    string `json:"token"`    // JWT令牌
 }
 
 // UserLoginResponse 用户登录响应结构
@@ -42,4 +43,5 @@ type UserLoginResponse struct {
 	Username  string `json:"username"`   // 用户名
 	Email     string `json:"email"`      // 邮箱
 	LastLogin string `json:"last_login"` // 最后登录时间
+	Token     string `json:"token"`      // JWT令牌
 }

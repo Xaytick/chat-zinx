@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/Xaytick/chat-zinx/chat-server/global"
+	"github.com/Xaytick/chat-zinx/chat-server/pkg/middleware"
 	"github.com/Xaytick/chat-zinx/chat-server/pkg/model"
 	"github.com/Xaytick/chat-zinx/chat-server/pkg/protocol"
 	"github.com/Xaytick/chat-zinx/chat-server/pkg/service"
@@ -15,6 +16,14 @@ import (
 // RegisterRouter 处理注册请求
 type RegisterRouter struct {
 	znet.BaseRouter
+	auth *middleware.AuthMiddleware
+}
+
+// NewRegisterRouter 创建新的注册路由
+func NewRegisterRouter() *RegisterRouter {
+	return &RegisterRouter{
+		auth: middleware.NewAuthMiddleware(),
+	}
 }
 
 func (r *RegisterRouter) Handle(request ziface.IRequest) {
@@ -40,29 +49,44 @@ func (r *RegisterRouter) Handle(request ziface.IRequest) {
 			sendRegisterResponse(request, 3, "用户已存在", nil)
 		} else {
 			// 其他错误，返回错误
-			sendRegisterResponse(request, 4, "注册失败: " + err.Error(), nil)
+			sendRegisterResponse(request, 4, "注册失败: "+err.Error(), nil)
 		}
 		return
 	}
 
+	// 确保auth中间件已初始化
+	if r.auth == nil {
+		r.auth = middleware.NewAuthMiddleware()
+	}
+
+	// 生成JWT令牌
+	token, err := r.auth.GenerateToken(user.UserID, user.Username)
+	if err != nil {
+		fmt.Printf("[注册] 生成Token失败: %v\n", err)
+		sendRegisterResponse(request, 5, "生成令牌失败", nil)
+		return
+	}
+
+	// 如果启用了Redis会话验证，保存会话
+	r.auth.SaveSession(user.UserID, token)
+
 	// 构造返回数据(不含敏感信息)
 	responseData := &model.UserRegisterResponse{
-		UserID:    user.UserID,
-		Username:  user.Username,
-		Email:     user.Email,
+		UserID:   user.UserID,
+		Username: user.Username,
+		Email:    user.Email,
+		Token:    token,
 	}
 
 	// 4. 返回成功响应
 	sendRegisterResponse(request, 0, "注册成功", responseData)
 	fmt.Printf("用户 %s 注册成功, ID: %s\n", user.Username, user.UserID)
-
-	
 }
 
 func sendRegisterResponse(requst ziface.IRequest, code uint32, message string, data interface{}) {
 	response := map[string]interface{}{
 		"code": code,
-		"msg": message,
+		"msg":  message,
 	}
 	if data != nil {
 		response["data"] = data
@@ -74,5 +98,4 @@ func sendRegisterResponse(requst ziface.IRequest, code uint32, message string, d
 		return
 	}
 	requst.GetConnection().SendMsg(protocol.MsgIDRegisterResp, jsonData)
-	
 }

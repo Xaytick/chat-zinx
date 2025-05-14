@@ -33,6 +33,27 @@ type RedisConfig struct {
 	MessageExpiration int    `json:"MessageExpiration"`
 }
 
+// AuthConfig 认证配置结构体
+type AuthConfig struct {
+	JWT             JWTConfig      `json:"JWT"`
+	Security        SecurityConfig `json:"Security"`
+	SignatureSecret string         `json:"SignatureSecret"`
+}
+
+// JWTConfig JWT配置结构体
+type JWTConfig struct {
+	Secret    string `json:"Secret"`
+	ExpiresIn int    `json:"ExpiresIn"`
+	Issuer    string `json:"Issuer"`
+}
+
+// SecurityConfig 安全配置结构体
+type SecurityConfig struct {
+	TimestampTolerance int `json:"TimestampTolerance"`
+	NonceExpiration    int `json:"NonceExpiration"`
+	SessionExpiration  int `json:"SessionExpiration"`
+}
+
 // Config 应用配置结构体
 type Config struct {
 	Name           string         `json:"Name"`
@@ -43,6 +64,7 @@ type Config struct {
 	MaxMsgChanLen  int            `json:"MaxMsgChanLen"`
 	MaxPacketSize  int            `json:"MaxPacketSize"`
 	Database       DatabaseConfig `json:"Database"`
+	Auth           AuthConfig     `json:"Auth"`
 }
 
 // 全局配置实例
@@ -74,9 +96,42 @@ func LoadConfig(filePath string) (*Config, error) {
 		return nil, err
 	}
 
+	// 设置默认值
+	setDefaultAuthConfig(&config.Auth)
+
 	// 更新全局配置
 	GlobalConfig = &config
 	return &config, nil
+}
+
+// 设置认证配置默认值
+func setDefaultAuthConfig(authConfig *AuthConfig) {
+	// JWT配置默认值
+	if authConfig.JWT.Secret == "" {
+		authConfig.JWT.Secret = "default-jwt-secret-please-change-in-production"
+	}
+	if authConfig.JWT.ExpiresIn == 0 {
+		authConfig.JWT.ExpiresIn = 86400 // 24小时
+	}
+	if authConfig.JWT.Issuer == "" {
+		authConfig.JWT.Issuer = "chat-zinx"
+	}
+
+	// 安全配置默认值
+	if authConfig.Security.TimestampTolerance == 0 {
+		authConfig.Security.TimestampTolerance = 300 // 5分钟
+	}
+	if authConfig.Security.NonceExpiration == 0 {
+		authConfig.Security.NonceExpiration = 600 // 10分钟
+	}
+	if authConfig.Security.SessionExpiration == 0 {
+		authConfig.Security.SessionExpiration = 86400 // 24小时
+	}
+
+	// 签名密钥默认值
+	if authConfig.SignatureSecret == "" {
+		authConfig.SignatureSecret = "default-signature-secret-please-change-in-production"
+	}
 }
 
 // GetMySQLConfig 获取MySQL配置
@@ -95,4 +150,13 @@ func GetRedisConfig() *RedisConfig {
 	}
 	redisConfig := GlobalConfig.Database.Redis
 	return &redisConfig
+}
+
+// GetAuthConfig 获取认证配置
+func GetAuthConfig() *AuthConfig {
+	if GlobalConfig == nil {
+		return nil
+	}
+	authConfig := GlobalConfig.Auth
+	return &authConfig
 }
