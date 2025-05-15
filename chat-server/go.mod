@@ -2,11 +2,11 @@ module github.com/Xaytick/chat-zinx/chat-server
 
 go 1.24.1
 
-require github.com/Xaytick/zinx v0.0.0-20250508173059-940fe4b8a9e3
+require github.com/Xaytick/zinx v0.0.0-20250515135912-f7eedf30ce5f
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
-	github.com/cespare/xxhash/v2 v2.1.2 // indirect
+	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/go-redis/redis/v8 v8.11.5 // indirect
 	github.com/go-sql-driver/mysql v1.9.2 // indirect

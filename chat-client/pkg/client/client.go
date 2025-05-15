@@ -17,6 +17,9 @@ type ChatClient struct {
 	Username string
 	// 用户名到用户ID的映射
 	UsernameToID map[string]string
+	// 心跳相关
+	heartbeatEnabled bool
+	heartbeatStop    chan struct{}
 }
 
 // NewChatClient 创建一个新的聊天客户端
@@ -27,13 +30,21 @@ func NewChatClient(serverAddr string) (*ChatClient, error) {
 	}
 
 	return &ChatClient{
-		Conn:         conn,
-		UsernameToID: make(map[string]string),
+		Conn:             conn,
+		UsernameToID:     make(map[string]string),
+		heartbeatEnabled: true,
+		heartbeatStop:    make(chan struct{}),
 	}, nil
 }
 
 // Close 关闭客户端连接
 func (c *ChatClient) Close() {
+	// 关闭心跳
+	if c.heartbeatEnabled {
+		c.StopHeartbeat()
+	}
+
+	// 关闭连接
 	if c.Conn != nil {
 		c.Conn.Close()
 	}
@@ -66,6 +77,52 @@ func (c *ChatClient) ReadResponse() ([]byte, []byte, error) {
 	}
 
 	return head, respBody, nil
+}
+
+// SendHeartbeat 发送心跳消息
+func (c *ChatClient) SendHeartbeat() error {
+	return c.SendMessage(protocol.MsgIDPing, []byte("ping"))
+}
+
+// StartHeartbeat 启动心跳，interval为心跳间隔时间
+func (c *ChatClient) StartHeartbeat(interval time.Duration) {
+	if !c.heartbeatEnabled {
+		return
+	}
+
+	// 初始化心跳停止通道
+	c.heartbeatStop = make(chan struct{})
+
+	// 启动心跳协程
+	go func() {
+		// 设置心跳间隔时间为interval, ticker是定时器
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		// 循环发送心跳
+		for {
+			select {
+			// 如果定时器触发，发送心跳
+			case <-ticker.C:
+				err := c.SendHeartbeat()
+				if err != nil {
+					fmt.Println("发送心跳失败:", err)
+					return
+				}
+				fmt.Println("发送心跳: PING")
+			// 如果心跳停止通道触发，停止心跳
+			case <-c.heartbeatStop:
+				fmt.Println("心跳已停止")
+				return
+			}
+		}
+	}()
+}
+
+// StopHeartbeat 停止心跳
+func (c *ChatClient) StopHeartbeat() {
+	if c.heartbeatStop != nil {
+		close(c.heartbeatStop)
+	}
 }
 
 // Register 注册用户
@@ -142,6 +199,9 @@ func (c *ChatClient) Login(username, password string) (map[string]interface{}, e
 
 		// 同时保存到映射表中
 		c.UsernameToID[c.Username] = c.UserID
+
+		// 登录成功后启动心跳
+		c.StartHeartbeat(60 * time.Second)
 	}
 
 	return resp, nil
@@ -195,6 +255,12 @@ func (c *ChatClient) StartMsgListener(handler func(msgID uint32, msgBody []byte)
 			}
 
 			msgID := binary.LittleEndian.Uint32(head[4:8])
+
+			// 处理心跳响应
+			if msgID == protocol.MsgIDPong {
+				fmt.Println("收到心跳响应: PONG")
+				continue
+			}
 
 			// 调用自定义处理函数
 			handler(msgID, body)

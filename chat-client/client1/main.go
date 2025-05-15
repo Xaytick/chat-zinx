@@ -4,6 +4,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/Xaytick/chat-zinx/chat-client/pkg/client"
@@ -19,13 +22,15 @@ func main() {
 	}
 	defer cli.Close()
 
-	// 注册并登录用户
+	// 注册并登录用户 - 登录成功后会自动启动心跳
 	if err := cli.RegisterAndLogin("testuser1", "123456"); err != nil {
 		panic(err)
 	}
 
 	// 等待一会，确保连接完全建立
 	time.Sleep(500 * time.Millisecond)
+
+	fmt.Println("心跳机制已启动，每60秒发送一次心跳...")
 
 	// 发送消息给 testuser2
 	targetUsername := "testuser2"
@@ -40,6 +45,8 @@ func main() {
 	fmt.Println("等待接收消息...")
 	cli.StartMsgListener(func(msgID uint32, msgBody []byte) {
 		switch msgID {
+		case protocol.MsgIDPong:
+			// 心跳响应已经在底层客户端处理，这里可以不处理
 		case protocol.MsgIDTextMsg:
 			// 尝试直接解析JSON
 			var msg model.TextMsg
@@ -71,8 +78,13 @@ func main() {
 		}
 	})
 
-	// 阻塞主程序
-	select {}
+	// 优雅关闭
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+
+	<-c
+	fmt.Println("\n正在关闭客户端...")
+	// 关闭客户端会自动停止心跳
 }
 
 // isBase64 检查字符串是否可能是Base64编码

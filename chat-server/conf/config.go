@@ -26,45 +26,53 @@ type MySQLConfig struct {
 
 // RedisConfig Redis配置结构体
 type RedisConfig struct {
-	Host              string `json:"Host"`
-	Port              int    `json:"Port"`
-	Password          string `json:"Password"`
-	DB                int    `json:"DB"`
-	MessageExpiration int    `json:"MessageExpiration"`
+	Host              string `json:"Host"`              // 主机地址
+	Port              int    `json:"Port"`              // 端口号
+	Password          string `json:"Password"`          // 密码
+	DB                int    `json:"DB"`                // 数据库
+	MessageExpiration int    `json:"MessageExpiration"` // 消息过期时间
+}
+
+// HeartbeatConfig 心跳配置结构体
+type HeartbeatConfig struct {
+	Enabled  bool `json:"Enabled"`  // 是否启用心跳检测
+	Interval int  `json:"Interval"` // 心跳检测间隔（秒）
+	Timeout  int  `json:"Timeout"`  // 心跳超时时间（秒）
 }
 
 // AuthConfig 认证配置结构体
 type AuthConfig struct {
-	JWT             JWTConfig      `json:"JWT"`
-	Security        SecurityConfig `json:"Security"`
-	SignatureSecret string         `json:"SignatureSecret"`
+	JWT             JWTConfig      `json:"JWT"`             // JWT配置
+	Security        SecurityConfig `json:"Security"`        // 安全配置
+	SignatureSecret string         `json:"SignatureSecret"` // 签名密钥
 }
 
 // JWTConfig JWT配置结构体
 type JWTConfig struct {
-	Secret    string `json:"Secret"`
-	ExpiresIn int    `json:"ExpiresIn"`
-	Issuer    string `json:"Issuer"`
+	Secret    string `json:"Secret"`    // 密钥
+	ExpiresIn int    `json:"ExpiresIn"` // 过期时间
+	Issuer    string `json:"Issuer"`    // 发行者
 }
 
 // SecurityConfig 安全配置结构体
 type SecurityConfig struct {
-	TimestampTolerance int `json:"TimestampTolerance"`
-	NonceExpiration    int `json:"NonceExpiration"`
-	SessionExpiration  int `json:"SessionExpiration"`
+	TimestampTolerance int `json:"TimestampTolerance"` // 时间戳容忍度
+	NonceExpiration    int `json:"NonceExpiration"`    // 非对称加密过期时间
+	SessionExpiration  int `json:"SessionExpiration"`  // 会话过期时间
 }
 
 // Config 应用配置结构体
 type Config struct {
-	Name           string         `json:"Name"`
-	Host           string         `json:"Host"`
-	TcpPort        int            `json:"TcpPort"`
-	MaxConn        int            `json:"MaxConn"`
-	WorkerPoolSize int            `json:"WorkerPoolSize"`
-	MaxMsgChanLen  int            `json:"MaxMsgChanLen"`
-	MaxPacketSize  int            `json:"MaxPacketSize"`
-	Database       DatabaseConfig `json:"Database"`
-	Auth           AuthConfig     `json:"Auth"`
+	Name           string          `json:"Name"`           // 名称
+	Host           string          `json:"Host"`           // 主机地址
+	TcpPort        int             `json:"TcpPort"`        // 端口号
+	MaxConn        int             `json:"MaxConn"`        // 最大连接数
+	WorkerPoolSize int             `json:"WorkerPoolSize"` // 工作池大小
+	MaxMsgChanLen  int             `json:"MaxMsgChanLen"`  // 最大消息通道长度
+	MaxPacketSize  int             `json:"MaxPacketSize"`  // 最大包大小
+	Heartbeat      HeartbeatConfig `json:"Heartbeat"`      // 心跳配置
+	Database       DatabaseConfig  `json:"Database"`       // 数据库配置
+	Auth           AuthConfig      `json:"Auth"`           // 认证配置
 }
 
 // 全局配置实例
@@ -98,6 +106,7 @@ func LoadConfig(filePath string) (*Config, error) {
 
 	// 设置默认值
 	setDefaultAuthConfig(&config.Auth)
+	setDefaultHeartbeatConfig(&config.Heartbeat)
 
 	// 更新全局配置
 	GlobalConfig = &config
@@ -134,6 +143,17 @@ func setDefaultAuthConfig(authConfig *AuthConfig) {
 	}
 }
 
+// 设置心跳配置默认值
+func setDefaultHeartbeatConfig(heartbeatConfig *HeartbeatConfig) {
+	// 如果没有设置，默认启用心跳
+	if heartbeatConfig.Interval == 0 {
+		heartbeatConfig.Interval = 60 // 默认60秒
+	}
+	if heartbeatConfig.Timeout == 0 {
+		heartbeatConfig.Timeout = 180 // 默认180秒
+	}
+}
+
 // GetMySQLConfig 获取MySQL配置
 func GetMySQLConfig() *MySQLConfig {
 	if GlobalConfig == nil {
@@ -159,4 +179,40 @@ func GetAuthConfig() *AuthConfig {
 	}
 	authConfig := GlobalConfig.Auth
 	return &authConfig
+}
+
+// GetHeartbeatConfig 获取心跳配置
+func GetHeartbeatConfig() *HeartbeatConfig {
+	if GlobalConfig == nil {
+		return nil
+	}
+	heartbeatConfig := GlobalConfig.Heartbeat
+	return &heartbeatConfig
+}
+
+// GetHeartbeatInterval 获取心跳间隔时间
+func GetHeartbeatInterval() int {
+	config := GetHeartbeatConfig()
+	if config == nil {
+		return 60 // 默认60秒
+	}
+	return config.Interval
+}
+
+// GetHeartbeatTimeout 获取心跳超时时间
+func GetHeartbeatTimeout() int {
+	config := GetHeartbeatConfig()
+	if config == nil {
+		return 180 // 默认180秒
+	}
+	return config.Timeout
+}
+
+// IsHeartbeatEnabled 检查心跳是否启用
+func IsHeartbeatEnabled() bool {
+	config := GetHeartbeatConfig()
+	if config == nil {
+		return true // 默认启用
+	}
+	return config.Enabled
 }

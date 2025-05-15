@@ -49,31 +49,42 @@ func main() {
 
 	// 5. 注册业务路由
 	fmt.Println("注册路由...")
+
 	// 注册/登录路由
 	global.GlobalServer.AddRouter(protocol.MsgIDRegisterReq, &router.RegisterRouter{})
 	global.GlobalServer.AddRouter(protocol.MsgIDLoginReq, &router.LoginRouter{})
+
 	// 聊天消息路由
 	global.GlobalServer.AddRouter(protocol.MsgIDTextMsg, &router.TextMsgRouter{})
+
 	// 历史消息和聊天关系路由
 	global.GlobalServer.AddRouter(protocol.MsgIDHistoryMsgReq, &router.HistoryMsgRouter{})
 	global.GlobalServer.AddRouter(protocol.MsgIDChatRelationReq, &router.ChatRelationRouter{})
 
-	// 6. 启动服务器勾子
+	// 6. 设置心跳检测，启用心跳检测会自动启动心跳路由
+	fmt.Println("启用心跳检测...")
+	global.GlobalServer.SetHeartbeat(true)
+
+	// 7. 启动服务器勾子
 	// 设置连接开始时的钩子函数
 	global.GlobalServer.SetOnConnStart(func(conn ziface.IConnection) {
 		fmt.Println("新连接 ConnID=", conn.GetConnID(), "IP:", conn.RemoteAddr().String())
+		fmt.Printf("心跳检测已启用，间隔: %d秒，超时: %d秒\n",
+			conf.GetHeartbeatInterval(), conf.GetHeartbeatTimeout())
 	})
 
 	// 设置连接结束时的钩子函数
 	global.GlobalServer.SetOnConnStop(func(conn ziface.IConnection) {
 		if userID, err := conn.GetProperty("userID"); err == nil {
-			fmt.Println("连接断开 ConnID=", conn.GetConnID(), "用户ID:", userID)
+			username, _ := conn.GetProperty("username")
+			fmt.Printf("连接断开 ConnID=%d, 用户: %s(ID=%s)\n",
+				conn.GetConnID(), username, userID)
 		} else {
 			fmt.Println("连接断开 ConnID=", conn.GetConnID(), "未登录用户")
 		}
 	})
 
-	// 7. 启动并阻塞服务
+	// 8. 启动并阻塞服务
 	fmt.Println("启动服务器...")
 	global.GlobalServer.Serve()
 }

@@ -6,5 +6,7 @@
   "MaxConn": 1000,
   "MaxPackageSize": 8192,
   "WorkerPoolSize": 20,
-  "MaxTaskLen": 1024
+  "MaxTaskLen": 1024,
+  "HeartbeatInterval": 60,
+  "HeartbeatTimeout": 180
 } 
