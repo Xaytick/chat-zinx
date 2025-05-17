@@ -1,25 +1,30 @@
 package client
 
 import (
-	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"time"
 
-	"github.com/Xaytick/chat-zinx/chat-server/pkg/protocol"
+	clientProtocol "github.com/Xaytick/chat-zinx/chat-client/pkg/protocol" // Client's own protocol for Message/DataPack
+	"github.com/Xaytick/chat-zinx/chat-server/pkg/model"
+	serverProtocol "github.com/Xaytick/chat-zinx/chat-server/pkg/protocol" // Alias for server's protocol constants
 )
 
 // ChatClient 聊天客户端结构体
 type ChatClient struct {
-	Conn     net.Conn
-	UserID   string
-	Username string
-	// 用户名到用户ID的映射
-	UsernameToID map[string]string
-	// 心跳相关
-	heartbeatEnabled bool
-	heartbeatStop    chan struct{}
+	Conn       net.Conn
+	ServerAddr string
+	UserID     uint   // User's primary key ID
+	UserUUID   string // User's UUID
+	Username   string // User's username
+	Token      string // JWT Token
+
+	isLoggedIn    bool
+	heartbeatStop chan struct{}
+	msgHandler    func(msgID uint32, data []byte) // Callback for received messages
 }
 
 // NewChatClient 创建一个新的聊天客户端
@@ -30,88 +35,91 @@ func NewChatClient(serverAddr string) (*ChatClient, error) {
 	}
 
 	return &ChatClient{
-		Conn:             conn,
-		UsernameToID:     make(map[string]string),
-		heartbeatEnabled: true,
-		heartbeatStop:    make(chan struct{}),
+		Conn:          conn,
+		ServerAddr:    serverAddr,
+		heartbeatStop: make(chan struct{}),
 	}, nil
 }
 
 // Close 关闭客户端连接
 func (c *ChatClient) Close() {
-	// 关闭心跳
-	if c.heartbeatEnabled {
-		c.StopHeartbeat()
-	}
-
-	// 关闭连接
+	c.StopHeartbeat()
 	if c.Conn != nil {
 		c.Conn.Close()
 	}
+	c.isLoggedIn = false
 }
 
-// SendMessage 发送消息
-func (c *ChatClient) SendMessage(msgID uint32, body []byte) error {
-	length := uint32(len(body))
-	buf := make([]byte, 8+len(body))
-	binary.LittleEndian.PutUint32(buf[0:4], length)
-	binary.LittleEndian.PutUint32(buf[4:8], msgID)
-	copy(buf[8:], body)
-	_, err := c.Conn.Write(buf)
+// SendMessage 封装了消息的打包和发送过程
+func (c *ChatClient) SendMessage(msgID uint32, data []byte) error {
+	if c.Conn == nil {
+		return errors.New("connection is not established")
+	}
+	msg := &clientProtocol.Message{ // Use clientProtocol.Message
+		DataLen: uint32(len(data)),
+		ID:      msgID,
+		Data:    data,
+	}
+
+	dp := clientProtocol.NewDataPack() // Use clientProtocol.NewDataPack
+	packedMsg, err := dp.Pack(msg)
+	if err != nil {
+		return fmt.Errorf("failed to pack message: %w", err)
+	}
+
+	_, err = c.Conn.Write(packedMsg)
 	return err
 }
 
-// ReadResponse 读取响应
-func (c *ChatClient) ReadResponse() ([]byte, []byte, error) {
-	head := make([]byte, 8)
-	_, err := c.Conn.Read(head)
-	if err != nil {
-		return nil, nil, fmt.Errorf("读取头部失败: %v", err)
+// readMessage 读取并解包一个完整的消息
+func (c *ChatClient) readMessage() (*clientProtocol.Message, error) { // Return clientProtocol.Message
+	if c.Conn == nil {
+		return nil, errors.New("connection is not established")
+	}
+	dp := clientProtocol.NewDataPack() // Use clientProtocol.NewDataPack
+
+	headData := make([]byte, dp.GetHeadLen())
+	if _, err := io.ReadFull(c.Conn, headData); err != nil {
+		return nil, fmt.Errorf("read message head error: %w", err)
 	}
 
-	respLen := binary.LittleEndian.Uint32(head[0:4])
-	respBody := make([]byte, respLen)
-	_, err = c.Conn.Read(respBody)
+	msg, err := dp.Unpack(headData) // msg is already *clientProtocol.Message from Unpack
 	if err != nil {
-		return nil, nil, fmt.Errorf("读取消息体失败: %v", err)
+		return nil, fmt.Errorf("unpack message head error: %w", err)
 	}
 
-	return head, respBody, nil
+	// msg := msgHead.(*clientProtocol.Message) // No type assertion needed here
+	if msg.GetDataLen() > 0 {
+		msg.Data = make([]byte, msg.GetDataLen())
+		if _, err := io.ReadFull(c.Conn, msg.Data); err != nil {
+			return nil, fmt.Errorf("read message data error: %w", err)
+		}
+	}
+	return msg, nil
 }
 
 // SendHeartbeat 发送心跳消息
 func (c *ChatClient) SendHeartbeat() error {
-	return c.SendMessage(protocol.MsgIDPing, []byte("ping"))
+	return c.SendMessage(serverProtocol.MsgIDPing, []byte("ping"))
 }
 
-// StartHeartbeat 启动心跳，interval为心跳间隔时间
+// StartHeartbeat 启动心跳
 func (c *ChatClient) StartHeartbeat(interval time.Duration) {
-	if !c.heartbeatEnabled {
-		return
+	if c.heartbeatStop == nil {
+		c.heartbeatStop = make(chan struct{})
 	}
-
-	// 初始化心跳停止通道
-	c.heartbeatStop = make(chan struct{})
-
-	// 启动心跳协程
 	go func() {
-		// 设置心跳间隔时间为interval, ticker是定时器
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
-		// 循环发送心跳
 		for {
 			select {
-			// 如果定时器触发，发送心跳
 			case <-ticker.C:
-				err := c.SendHeartbeat()
-				if err != nil {
-					fmt.Println("发送心跳失败:", err)
+				if err := c.SendHeartbeat(); err != nil {
+					fmt.Printf("发送心跳失败: %v\n", err)
 					return
 				}
-				fmt.Println("发送心跳: PING")
-			// 如果心跳停止通道触发，停止心跳
 			case <-c.heartbeatStop:
-				fmt.Println("心跳已停止")
+				fmt.Println("心跳已停止.")
 				return
 			}
 		}
@@ -121,196 +129,207 @@ func (c *ChatClient) StartHeartbeat(interval time.Duration) {
 // StopHeartbeat 停止心跳
 func (c *ChatClient) StopHeartbeat() {
 	if c.heartbeatStop != nil {
+		select {
+		case c.heartbeatStop <- struct{}{}:
+		default:
+		}
 		close(c.heartbeatStop)
+		c.heartbeatStop = nil
 	}
 }
 
 // Register 注册用户
-func (c *ChatClient) Register(username, password, email string) (map[string]interface{}, error) {
-	req := map[string]string{
-		"username": username,
-		"password": password,
-		"email":    email,
+func (c *ChatClient) Register(username, password, email string) (*model.UserRegisterResponse, error) {
+	req := model.UserRegisterReq{
+		Username: username,
+		Password: password,
+		Email:    email,
 	}
-	body, _ := json.Marshal(req)
-
-	if err := c.SendMessage(protocol.MsgIDRegisterReq, body); err != nil {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal register request: %w", err)
+	}
+	if err := c.SendMessage(serverProtocol.MsgIDRegisterReq, body); err != nil {
 		return nil, fmt.Errorf("发送注册请求失败: %v", err)
 	}
-
-	head, respBody, err := c.ReadResponse()
+	respMsg, err := c.readMessage()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("读取注册响应失败: %v", err)
 	}
-
-	msgID := binary.LittleEndian.Uint32(head[4:8])
-	if msgID != protocol.MsgIDRegisterResp {
-		return nil, fmt.Errorf("响应消息ID错误，期望%d，实际%d", protocol.MsgIDRegisterResp, msgID)
+	if respMsg.GetMsgID() != serverProtocol.MsgIDRegisterResp {
+		return nil, fmt.Errorf("响应消息ID错误，期望%d，实际%d", serverProtocol.MsgIDRegisterResp, respMsg.GetMsgID())
 	}
-
-	var resp map[string]interface{}
-	if err := json.Unmarshal(respBody, &resp); err != nil {
-		return nil, fmt.Errorf("解析响应失败: %v", err)
+	var genericResp struct {
+		Code uint32                     `json:"code"`
+		Msg  string                     `json:"msg"`
+		Data model.UserRegisterResponse `json:"data"`
 	}
-
-	// 如果注册成功，保存用户ID
-	if resp["code"].(float64) == 0 && resp["data"] != nil {
-		data := resp["data"].(map[string]interface{})
-		if userID, ok := data["user_id"].(string); ok && username != "" {
-			c.UsernameToID[username] = userID
+	if err := json.Unmarshal(respMsg.GetData(), &genericResp); err != nil {
+		var mapResp map[string]interface{}
+		if json.Unmarshal(respMsg.GetData(), &mapResp) == nil {
+			fmt.Printf("Debug: Register Raw Response: %+v\n", mapResp)
 		}
+		return nil, fmt.Errorf("解析注册响应失败: %v, body: %s", err, string(respMsg.GetData()))
 	}
-
-	return resp, nil
+	if genericResp.Code != 0 {
+		return nil, fmt.Errorf("注册失败: %s (code: %d)", genericResp.Msg, genericResp.Code)
+	}
+	return &genericResp.Data, nil
 }
 
 // Login 用户登录
-func (c *ChatClient) Login(username, password string) (map[string]interface{}, error) {
-	req := map[string]string{
-		"username": username,
-		"password": password,
+func (c *ChatClient) Login(username, password string) (*model.UserLoginResponse, error) {
+	req := model.UserLoginReq{
+		Username: username,
+		Password: password,
 	}
-	body, _ := json.Marshal(req)
-
-	if err := c.SendMessage(protocol.MsgIDLoginReq, body); err != nil {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal login request: %w", err)
+	}
+	if err := c.SendMessage(serverProtocol.MsgIDLoginReq, body); err != nil {
 		return nil, fmt.Errorf("发送登录请求失败: %v", err)
 	}
-
-	head, respBody, err := c.ReadResponse()
+	respMsg, err := c.readMessage()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("读取登录响应失败: %v", err)
 	}
-
-	msgID := binary.LittleEndian.Uint32(head[4:8])
-	if msgID != protocol.MsgIDLoginResp {
-		return nil, fmt.Errorf("响应消息ID错误，期望%d，实际%d", protocol.MsgIDLoginResp, msgID)
+	if respMsg.GetMsgID() != serverProtocol.MsgIDLoginResp {
+		return nil, fmt.Errorf("响应消息ID错误，期望%d，实际%d", serverProtocol.MsgIDLoginResp, respMsg.GetMsgID())
 	}
-
-	var resp map[string]interface{}
-	if err := json.Unmarshal(respBody, &resp); err != nil {
-		return nil, fmt.Errorf("解析响应失败: %v", err)
+	var genericResp struct {
+		Code uint32                  `json:"code"`
+		Msg  string                  `json:"msg"`
+		Data model.UserLoginResponse `json:"data"`
 	}
-
-	// 如果登录成功，设置客户端的用户信息
-	if resp["code"].(float64) == 0 {
-		data := resp["data"].(map[string]interface{})
-		c.UserID = data["user_id"].(string)
-		c.Username = data["username"].(string)
-
-		// 同时保存到映射表中
-		c.UsernameToID[c.Username] = c.UserID
-
-		// 登录成功后启动心跳
-		c.StartHeartbeat(60 * time.Second)
+	if err := json.Unmarshal(respMsg.GetData(), &genericResp); err != nil {
+		var mapResp map[string]interface{}
+		if json.Unmarshal(respMsg.GetData(), &mapResp) == nil {
+			fmt.Printf("Debug: Login Raw Response: %+v\n", mapResp)
+		}
+		return nil, fmt.Errorf("解析登录响应失败: %v, body: %s", err, string(respMsg.GetData()))
 	}
-
-	return resp, nil
+	if genericResp.Code != 0 {
+		return nil, fmt.Errorf("登录失败: %s (code: %d)", genericResp.Msg, genericResp.Code)
+	}
+	c.UserID = genericResp.Data.ID
+	c.UserUUID = genericResp.Data.UserUUID
+	c.Username = genericResp.Data.Username
+	c.Token = genericResp.Data.Token
+	c.isLoggedIn = true
+	c.StartHeartbeat(60 * time.Second)
+	fmt.Printf("用户 %s (ID: %d, UUID: %s) 登录成功.\n", c.Username, c.UserID, c.UserUUID)
+	return &genericResp.Data, nil
 }
 
-// GetUserID 根据用户名获取用户ID
-func (c *ChatClient) GetUserID(username string) string {
-	// 如果是自己，直接返回自己的ID
-	if username == c.Username {
-		return c.UserID
-	}
-
-	// 从映射表中查找
-	if id, ok := c.UsernameToID[username]; ok {
-		return id
-	}
-
-	// 如果没有找到，默认返回用户名（向后兼容）
-	return username
-}
-
-// AddUserInfo 添加用户信息到映射表
-func (c *ChatClient) AddUserInfo(username, userID string) {
-	if username != "" && userID != "" {
-		c.UsernameToID[username] = userID
-		fmt.Printf("添加用户映射: %s -> %s\n", username, userID)
-	}
+// IsLoggedIn 检查客户端是否已登录
+func (c *ChatClient) IsLoggedIn() bool {
+	return c.isLoggedIn
 }
 
 // SendTextMessage 发送文本消息
-func (c *ChatClient) SendTextMessage(toUsername, content string) error {
-	// 获取接收者的用户ID
-	toUserID := c.GetUserID(toUsername)
-
-	msg := map[string]string{
-		"to_user_id": toUserID,
-		"content":    content,
+func (c *ChatClient) SendTextMessage(toUserIdentity string, content string) error {
+	if !c.isLoggedIn {
+		return errors.New("请先登录再发送消息")
 	}
-	body, _ := json.Marshal(msg)
-	return c.SendMessage(protocol.MsgIDTextMsg, body)
+	msg := model.TextMsg{
+		ToUserID: toUserIdentity,
+		Content:  content,
+	}
+	body, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal text message: %w", err)
+	}
+	return c.SendMessage(serverProtocol.MsgIDTextMsg, body)
 }
 
 // StartMsgListener 启动消息监听器，接收服务器推送的消息
-func (c *ChatClient) StartMsgListener(handler func(msgID uint32, msgBody []byte)) {
+func (c *ChatClient) StartMsgListener(handler func(msgID uint32, data []byte)) {
+	c.msgHandler = handler
 	go func() {
+		if c.Conn == nil {
+			fmt.Println("错误：消息监听器启动时连接为空。")
+			return
+		}
+		fmt.Println("消息监听器已启动...")
 		for {
-			head, body, err := c.ReadResponse()
+			msg, err := c.readMessage()
 			if err != nil {
-				fmt.Println("连接关闭或读取出错:", err)
+				if c.isLoggedIn {
+					fmt.Printf("读取消息失败: %v. 监听器停止.\n", err)
+				}
+				c.Close()
 				return
 			}
-
-			msgID := binary.LittleEndian.Uint32(head[4:8])
-
-			// 处理心跳响应
-			if msgID == protocol.MsgIDPong {
-				fmt.Println("收到心跳响应: PONG")
-				continue
+			if c.msgHandler != nil {
+				if msg.GetMsgID() == serverProtocol.MsgIDPong {
+					continue
+				}
+				c.msgHandler(msg.GetMsgID(), msg.GetData())
 			}
-
-			// 调用自定义处理函数
-			handler(msgID, body)
 		}
 	}()
 }
 
-// GetUsernameByID 根据用户ID获取用户名
-func (c *ChatClient) GetUsernameByID(userID string) string {
-	// 如果是自己的ID，返回自己的用户名
-	if userID == c.UserID {
-		return c.Username
+// SendHistoryMessageReq 发送获取历史消息请求
+func (c *ChatClient) SendHistoryMessageReq(targetUserUUID string, limit int) error {
+	if !c.isLoggedIn {
+		return errors.New("请先登录")
 	}
-
-	// 遍历映射表查找
-	for username, id := range c.UsernameToID {
-		if id == userID {
-			return username
-		}
+	req := model.HistoryMsgReq{
+		TargetUserUUID: targetUserUUID,
+		Limit:          limit,
 	}
-
-	// 如果找不到，返回原始ID
-	return userID
+	body, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("failed to marshal history message request: %w", err)
+	}
+	return c.SendMessage(serverProtocol.MsgIDHistoryMsgReq, body)
 }
 
-// RegisterAndLogin 注册并登录（如果用户已存在则直接登录）
-func (c *ChatClient) RegisterAndLogin(username, password string) error {
-	// 1. 尝试注册
-	fmt.Println("尝试注册用户:", username)
-	resp, err := c.Register(username, password, username+"@example.com")
+// SendCreateGroupReq 发送创建群组请求
+func (c *ChatClient) SendCreateGroupReq(name, description, avatar string) error {
+	if !c.isLoggedIn {
+		return errors.New("请先登录")
+	}
+	req := model.CreateGroupReq{
+		Name:        name,
+		Description: description,
+		Avatar:      avatar,
+	}
+	body, err := json.Marshal(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal create group request: %w", err)
 	}
+	return c.SendMessage(serverProtocol.MsgIDCreateGroupReq, body)
+}
 
-	fmt.Println("注册响应:", resp["msg"])
-
-	// 等待一会，避免消息发送太快
-	time.Sleep(500 * time.Millisecond)
-
-	// 2. 尝试登录
-	fmt.Println("尝试登录用户:", username)
-	loginResp, err := c.Login(username, password)
+// SendJoinGroupReq 发送加入群组请求
+func (c *ChatClient) SendJoinGroupReq(groupID uint) error {
+	if !c.isLoggedIn {
+		return errors.New("请先登录")
+	}
+	req := model.JoinGroupReq{
+		GroupID: groupID,
+	}
+	body, err := json.Marshal(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal join group request: %w", err)
 	}
+	return c.SendMessage(serverProtocol.MsgIDJoinGroupReq, body)
+}
 
-	if loginResp["code"].(float64) != 0 {
-		return fmt.Errorf("登录失败: %s", loginResp["msg"].(string))
+// SendLeaveGroupReq 发送离开群组请求
+func (c *ChatClient) SendLeaveGroupReq(groupID uint) error {
+	if !c.isLoggedIn {
+		return errors.New("请先登录")
 	}
-
-	fmt.Println("登录成功! 用户信息:", loginResp["data"])
-	return nil
+	req := model.LeaveGroupReq{
+		GroupID: groupID,
+	}
+	body, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("failed to marshal leave group request: %w", err)
+	}
+	return c.SendMessage(serverProtocol.MsgIDLeaveGroupReq, body)
 }

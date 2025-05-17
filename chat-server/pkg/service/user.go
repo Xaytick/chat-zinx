@@ -2,139 +2,104 @@ package service
 
 import (
 	"errors"
-	"time"
 
 	"github.com/Xaytick/chat-zinx/chat-server/pkg/model"
-	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
 )
 
 var (
-	ErrUserNotFound      = errors.New("用户不存在")
-	ErrUserAlreadyExists = errors.New("用户已存在")
-	ErrPasswordIncorrect = errors.New("密码错误")
+	ErrUserNotFound       = errors.New("user not found")
+	ErrUserAlreadyExists  = errors.New("用户已存在")
+	ErrPasswordIncorrect  = errors.New("password incorrect")
+	ErrUsernameExists     = errors.New("username already exists")
+	ErrInvalidCredentials = errors.New("invalid username or password")
 )
 
-// IUserService 用户服务接口, 提供用户注册、登录、获取用户信息等操作
+// IUserService 定义用户服务接口
 type IUserService interface {
-	// Register 注册新用户
-	Register(req model.UserRegisterReq) (*model.User, error)
-
-	// Login 用户登录
-	Login(req model.UserLoginReq) (*model.User, error)
-
-	// GetUserByID 根据用户ID获取用户信息
-	GetUserByID(userID string) (*model.User, error)
-
+	// Register 用户注册，成功返回完整的User模型（包含ID, UserUUID等）
+	Register(req *model.UserRegisterReq) (*model.User, error)
+	// Login 用户登录，成功返回JWT Token和User模型
+	Login(req *model.UserLoginReq) (token string, user *model.User, err error)
+	// GetUserByID 根据主键ID (uint) 获取用户信息
+	GetUserByID(userID uint) (*model.User, error)
+	// GetUserByUUID 根据UUID获取用户信息
+	GetUserByUUID(uuid string) (*model.User, error)
 	// GetUserByUsername 根据用户名获取用户信息
 	GetUserByUsername(username string) (*model.User, error)
-
-	// UpdateLastLogin 更新用户最后登录时间
-	UpdateLastLogin(userID string) error
+	// UpdateUserOnlineStatus 更新用户在线状态
+	UpdateUserOnlineStatus(userID uint, isOnline bool) error
+	// UpdateUserLastLoginInfo 更新用户最后登录信息
+	UpdateUserLastLoginInfo(userID uint) error
 }
 
-// InMemoryUserService 内存实现的用户服务
-// TODO: 后续替换为数据库实现
+/*
+// InMemoryUserService 是IUserService的一个内存实现，主要用于测试
 type InMemoryUserService struct {
-	users map[string]*model.User // userID -> User
+	users map[string]*model.User // 使用 UserID 作为 key
+	mu    sync.Mutex
 }
 
-// NewInMemoryUserService 创建内存用户服务
-func NewInMemoryUserService() *InMemoryUserService {
+// NewInMemoryUserService 创建一个新的内存用户服务实例
+func NewInMemoryUserService() IUserService {
 	return &InMemoryUserService{
 		users: make(map[string]*model.User),
 	}
 }
 
-// Register 注册新用户
-func (s *InMemoryUserService) Register(req model.UserRegisterReq) (*model.User, error) {
-	// 检查用户是否已存在
-	for _, existingUser := range s.users {
-		if existingUser.Username == req.Username {
-			return nil, ErrUserAlreadyExists
-		}
+// Register 注册新用户 (内存实现)
+func (s *InMemoryUserService) Register(req *model.UserRegisterReq) (*model.User, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.users[req.Username]; exists { // 简单假设username是唯一的key
+		return nil, errors.New("username already exists")
 	}
 
-	// 生成用户ID
-	userID := uuid.New().String()
-	// 加密密码
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-	if err != nil {
-		return nil, err
+	// 在内存实现中，我们可能不会处理真实的密码哈希和UserUUID生成，或者简化处理
+	newUser := &model.User{
+		// ID:        uint(len(s.users) + 1), // 简单的自增ID
+		// UserUUID:  uuid.NewString(),
+		Username: req.Username,
+		// Password: req.Password, // 注意：不应该存储明文密码
+		Email:    req.Email,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		LastLogin: time.Now(),
 	}
-
-	// 创建用户
-	user := &model.User{
-		UserID:       userID,
-		Username:     req.Username,
-		PasswordHash: string(hashedPassword),
-		Email:        req.Email,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
-		LastLogin:    time.Now(),
-	}
-
-	// 保存用户
-	s.users[userID] = user
-
-	return user, nil
+	s.users[newUser.Username] = newUser // 假设用Username作为key
+	return newUser, nil
 }
 
-// Login 用户登录
-func (s *InMemoryUserService) Login(req model.UserLoginReq) (*model.User, error) {
-	// 查找用户
-	var user *model.User
-	for _, u := range s.users {
-		if u.Username == req.Username {
-			user = u
-			break
-		}
+// Login 用户登录 (内存实现)
+func (s *InMemoryUserService) Login(req *model.UserLoginReq) (string, *model.User, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	user, exists := s.users[req.Username]
+	if !exists {
+		return "", nil, errors.New("user not found")
 	}
 
-	// 如果用户不存在
-	if user == nil {
-		return nil, ErrUserNotFound
-	}
+	// 内存实现中简化密码验证
+	// if user.Password != req.Password { // 错误：不应该比较明文
+	// 	 return "", nil, errors.New("invalid password")
+	// }
+	fmt.Println("Warning: In-memory login does not perform real password validation.")
 
-	// 验证密码
-	err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password))
-	if err != nil {
-		return nil, ErrPasswordIncorrect
-	}
-
-	// 更新最后登录时间
-	s.UpdateLastLogin(user.UserID)
-
-	return user, nil
+ 	// 模拟JWT token生成
+	return "fake-jwt-token-for-in-memory", user, nil
 }
 
-// GetUserByID 根据用户ID获取用户信息
-func (s *InMemoryUserService) GetUserByID(userID string) (*model.User, error) {
-	user, ok := s.users[userID]
-	if !ok {
-		return nil, ErrUserNotFound
-	}
-	return user, nil
-}
-
-// GetUserByUsername 根据用户名获取用户信息
-func (s *InMemoryUserService) GetUserByUsername(username string) (*model.User, error) {
+// GetUserByID 根据用户ID获取用户信息 (内存实现)
+func (s *InMemoryUserService) GetUserByID(userID uint) (*model.User, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for _, user := range s.users {
-		if user.Username == username {
-			return user, nil
-		}
+		// if user.ID == userID { // 假设 User 结构有 ID 字段
+		// 	 return user, nil
+		// }
 	}
-	return nil, ErrUserNotFound
+	fmt.Printf("Warning: In-memory GetUserByID (uint) not fully implemented to match ID field.\n")
+	return nil, errors.New("user not found in-memory by uint ID")
 }
-
-// UpdateLastLogin 更新用户最后登录时间
-func (s *InMemoryUserService) UpdateLastLogin(userID string) error {
-	user, ok := s.users[userID]
-	if !ok {
-		return ErrUserNotFound
-	}
-
-	user.LastLogin = time.Now()
-	return nil
-}
- 
+*/

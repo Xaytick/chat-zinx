@@ -12,8 +12,8 @@ import (
 
 // 历史消息请求结构
 type HistoryMsgReq struct {
-	TargetUserID string `json:"target_user_id"` // 对话目标用户ID
-	Limit        int    `json:"limit"`          // 消息数量限制
+	TargetUserUUID string `json:"target_user_uuid"`
+	Limit          int    `json:"limit"`
 }
 
 // 历史消息响应结构
@@ -30,9 +30,15 @@ type HistoryMsgRouter struct {
 
 func (r *HistoryMsgRouter) Handle(request ziface.IRequest) {
 	// 1. 获取当前用户ID
-	fromUserID, err := request.GetConnection().GetProperty("userID")
-	if err != nil {
+	fromUserIDProp, err := request.GetConnection().GetProperty("userID")
+	if err != nil || fromUserIDProp == nil {
 		sendHistoryResponse(request, 1, "未登录用户", nil)
+		return
+	}
+	fromUserIDUint, ok := fromUserIDProp.(uint)
+	if !ok {
+		fmt.Println("[历史消息] fromUserID 类型错误 on connection property")
+		sendHistoryResponse(request, 1, "内部错误：用户ID无效", nil)
 		return
 	}
 
@@ -44,27 +50,38 @@ func (r *HistoryMsgRouter) Handle(request ziface.IRequest) {
 	}
 
 	// 3. 验证参数
-	if req.TargetUserID == "" {
-		sendHistoryResponse(request, 3, "目标用户ID不能为空", nil)
+	if req.TargetUserUUID == "" {
+		sendHistoryResponse(request, 3, "目标用户UUID不能为空", nil)
 		return
 	}
 
 	// 设置默认限制
 	if req.Limit <= 0 {
-		req.Limit = 50 // 默认获取最近50条消息
+		req.Limit = 50
 	} else if req.Limit > 200 {
-		req.Limit = 200 // 最多获取200条
+		req.Limit = 200
 	}
 
-	// 4. 获取历史消息
-	messages, err := global.MessageService.GetHistoryMessages(fromUserID.(string), req.TargetUserID, req.Limit)
+	// 4. 根据 TargetUserUUID 查找目标用户以获取其 uint ID
+	targetUser, err := global.UserService.GetUserByUUID(req.TargetUserUUID)
+	if err != nil || targetUser == nil {
+		fmt.Printf("[历史消息] 查找目标用户 %s 失败: %v\n", req.TargetUserUUID, err)
+		// Check if it might be a username or numeric ID if GetUserByUUID fails
+		// For now, assume UUID is provided or fail.
+		sendHistoryResponse(request, 3, "目标用户不存在", nil)
+		return
+	}
+	targetUserIDUint := targetUser.ID
+
+	// 5. 获取历史消息
+	messages, err := global.MessageService.GetHistoryMessages(fromUserIDUint, targetUserIDUint, req.Limit)
 	if err != nil {
 		fmt.Printf("[历史消息] 获取失败: %v\n", err)
 		sendHistoryResponse(request, 4, "获取历史消息失败", nil)
 		return
 	}
 
-	// 5. 返回历史消息
+	// 6. 返回历史消息
 	sendHistoryResponse(request, 0, "成功", messages)
 }
 

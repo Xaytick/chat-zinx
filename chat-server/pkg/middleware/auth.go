@@ -19,13 +19,6 @@ import (
 	"github.com/golang-jwt/jwt"
 )
 
-// 自定义JWT声明
-type CustomClaims struct {
-	UserID   string `json:"user_id"`
-	Username string `json:"username"`
-	jwt.StandardClaims
-}
-
 // AuthMiddleware 认证中间件
 type AuthMiddleware struct {
 	// 配置选项
@@ -141,15 +134,15 @@ func (m *AuthMiddleware) Verify(request ziface.IRequest) (bool, *model.User, err
 			// 继续处理，如果Redis会话验证启用的话
 		} else {
 			// JWT验证通过，获取用户信息
-			userInfo, err = global.UserService.GetUserByID(claims.UserID)
+			userInfo, err = global.UserService.GetUserByID(claims.ID)
 			if err != nil {
-				return false, nil, fmt.Errorf("获取用户信息失败: %v", err)
+				return false, nil, fmt.Errorf("获取用户信息失败 (JWT): %v", err)
 			}
 
 			// 3. 验证Redis会话（如果启用）
 			if m.EnableRedisCheck {
-				if !m.verifyRedisSession(claims.UserID, token) {
-					return false, nil, errors.New("会话验证失败")
+				if !m.verifyRedisSession(claims.ID, token) {
+					return false, nil, errors.New("Redis会话验证失败 (JWT)")
 				}
 			}
 
@@ -160,20 +153,26 @@ func (m *AuthMiddleware) Verify(request ziface.IRequest) (bool, *model.User, err
 	// 如果JWT验证失败但启用了Redis会话验证
 	if m.EnableRedisCheck && jwtErr != nil {
 		// 从请求中提取用户ID和Token
-		userID, token, err := ExportExtractUserIDAndToken(authData)
+		userIDStr, token, err := ExportExtractUserIDAndToken(authData)
 		if err != nil {
-			return false, nil, fmt.Errorf("提取用户ID和Token失败: %v", err)
+			return false, nil, fmt.Errorf("提取用户ID和Token失败 (Redis fallback): %v", err)
 		}
+
+		parsedUserID, parseErr := strconv.ParseUint(userIDStr, 10, 64)
+		if parseErr != nil {
+			return false, nil, fmt.Errorf("无法将提取的用户ID解析为uint: %v", parseErr)
+		}
+		userID := uint(parsedUserID)
 
 		// 验证Redis会话
 		if !m.verifyRedisSession(userID, token) {
-			return false, nil, errors.New("会话验证失败")
+			return false, nil, errors.New("Redis会话验证失败 (fallback)")
 		}
 
 		// Redis验证通过，获取用户信息
 		userInfo, err = global.UserService.GetUserByID(userID)
 		if err != nil {
-			return false, nil, fmt.Errorf("获取用户信息失败: %v", err)
+			return false, nil, fmt.Errorf("获取用户信息失败 (Redis fallback): %v", err)
 		}
 
 		return true, userInfo, nil
@@ -235,8 +234,8 @@ func (m *AuthMiddleware) verifySignature(timestamp string, nonce string, signatu
 }
 
 // verifyJWT 验证JWT
-func (m *AuthMiddleware) verifyJWT(tokenString string) (*CustomClaims, error) {
-	token, err := jwt.ParseWithClaims(tokenString, &CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
+func (m *AuthMiddleware) verifyJWT(tokenString string) (*model.CustomClaims, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &model.CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
 		return []byte(m.JWTSecret), nil
 	})
 
@@ -244,7 +243,7 @@ func (m *AuthMiddleware) verifyJWT(tokenString string) (*CustomClaims, error) {
 		return nil, err
 	}
 
-	if claims, ok := token.Claims.(*CustomClaims); ok && token.Valid {
+	if claims, ok := token.Claims.(*model.CustomClaims); ok && token.Valid {
 		return claims, nil
 	}
 
@@ -252,11 +251,11 @@ func (m *AuthMiddleware) verifyJWT(tokenString string) (*CustomClaims, error) {
 }
 
 // verifyRedisSession 验证Redis会话
-func (m *AuthMiddleware) verifyRedisSession(userID string, token string) bool {
-	sessionKey := fmt.Sprintf("session:%s", userID)
+func (m *AuthMiddleware) verifyRedisSession(userID uint, token string) bool {
+	sessionKey := fmt.Sprintf("session:%d", userID)
 	storedToken, err := redis.RedisClient.Get(redis.Ctx, sessionKey).Result()
 	if err != nil {
-		fmt.Printf("[Auth] 获取会话失败: %v\n", err)
+		fmt.Printf("[Auth] 获取会话失败 for user %d: %v\n", userID, err)
 		return false
 	}
 
@@ -264,10 +263,11 @@ func (m *AuthMiddleware) verifyRedisSession(userID string, token string) bool {
 }
 
 // GenerateToken 生成JWT令牌
-func (m *AuthMiddleware) GenerateToken(userID, username string) (string, error) {
+func (m *AuthMiddleware) GenerateToken(userID uint, userUUID, username string) (string, error) {
 	// 创建Claims
-	claims := CustomClaims{
-		UserID:   userID,
+	claims := model.CustomClaims{
+		ID:       userID,
+		UserUUID: userUUID,
 		Username: username,
 		StandardClaims: jwt.StandardClaims{
 			ExpiresAt: time.Now().Add(time.Duration(m.SessionExpiration) * time.Second).Unix(),
@@ -284,14 +284,14 @@ func (m *AuthMiddleware) GenerateToken(userID, username string) (string, error) 
 }
 
 // SaveSession 保存会话到Redis
-func (m *AuthMiddleware) SaveSession(userID, token string) error {
-	sessionKey := fmt.Sprintf("session:%s", userID)
+func (m *AuthMiddleware) SaveSession(userID uint, token string) error {
+	sessionKey := fmt.Sprintf("session:%d", userID)
 	return redis.RedisClient.Set(redis.Ctx, sessionKey, token, time.Duration(m.SessionExpiration)*time.Second).Err()
 }
 
 // RemoveSession 从Redis移除会话
-func (m *AuthMiddleware) RemoveSession(userID string) error {
-	sessionKey := fmt.Sprintf("session:%s", userID)
+func (m *AuthMiddleware) RemoveSession(userID uint) error {
+	sessionKey := fmt.Sprintf("session:%d", userID)
 	return redis.RedisClient.Del(redis.Ctx, sessionKey).Err()
 }
 

@@ -1,6 +1,8 @@
 package global
 
 import (
+	"fmt"
+
 	"github.com/Xaytick/chat-zinx/chat-server/pkg/service"
 	"github.com/Xaytick/zinx/ziface"
 )
@@ -14,6 +16,9 @@ var (
 
 	// MessageService 消息服务实例
 	MessageService service.IMessageService
+
+	// GroupService 群组服务实例
+	GroupService service.IGroupService
 )
 
 // InitServices 初始化所有服务
@@ -24,6 +29,8 @@ func InitServices() {
 	// 初始化消息服务(使用Redis实现)
 	MessageService = service.NewRedisMessageService()
 
-	// 这里可以添加其他服务初始化
+	// 初始化群组服务
+	GroupService = service.NewGroupService()
+
+	fmt.Println("所有服务初始化完毕!")
 }
- 

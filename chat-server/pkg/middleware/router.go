@@ -66,7 +66,7 @@ func (ar *AuthRouter) PreHandle(request ziface.IRequest) {
 
 	// 认证成功，将用户信息存储到连接属性中
 	if userInfo != nil {
-		request.GetConnection().SetProperty("userID", userInfo.UserID)
+		request.GetConnection().SetProperty("userID", userInfo.UserUUID)
 		request.GetConnection().SetProperty("username", userInfo.Username)
 	}
 

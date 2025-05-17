@@ -2,13 +2,14 @@ package router
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/Xaytick/chat-zinx/chat-server/global"
-	"github.com/Xaytick/chat-zinx/chat-server/pkg/middleware"
+	// "github.com/Xaytick/chat-zinx/chat-server/pkg/middleware" // Token生成移至Service层或按需处理
 	"github.com/Xaytick/chat-zinx/chat-server/pkg/model"
 	"github.com/Xaytick/chat-zinx/chat-server/pkg/protocol"
-	"github.com/Xaytick/chat-zinx/chat-server/pkg/service"
+	"github.com/Xaytick/chat-zinx/chat-server/pkg/service" // 用于错误比较
 	"github.com/Xaytick/zinx/ziface"
 	"github.com/Xaytick/zinx/znet"
 )
@@ -16,74 +17,67 @@ import (
 // RegisterRouter 处理注册请求
 type RegisterRouter struct {
 	znet.BaseRouter
-	auth *middleware.AuthMiddleware
+	// auth *middleware.AuthMiddleware // 移除非必要依赖
 }
 
-// NewRegisterRouter 创建新的注册路由
-func NewRegisterRouter() *RegisterRouter {
-	return &RegisterRouter{
-		auth: middleware.NewAuthMiddleware(),
-	}
-}
+// NewRegisterRouter 创建新的注册路由 (如果不需要内部状态如auth, 可以移除)
+// func NewRegisterRouter() *RegisterRouter {
+// 	return &RegisterRouter{}
+// }
 
 func (r *RegisterRouter) Handle(request ziface.IRequest) {
-	// 1. 解析消息体
 	var registerReq model.UserRegisterReq
 	if err := json.Unmarshal(request.GetData(), &registerReq); err != nil {
-		// 解析失败，返回错误
 		sendRegisterResponse(request, 1, "请求数据格式错误", nil)
 		return
 	}
 
-	// 2. 参数验证
 	if registerReq.Username == "" || registerReq.Password == "" {
 		sendRegisterResponse(request, 2, "用户名和密码不能为空", nil)
 		return
 	}
+	// Email 验证可以做得更细致，例如使用正则表达式
+	if registerReq.Email == "" { // 简单检查，model中已有 binding:"required,email"
+		sendRegisterResponse(request, 2, "邮箱不能为空", nil)
+		return
+	}
 
-	// 3. 调用用户服务注册
-	user, err := global.UserService.Register(registerReq)
+	user, err := global.UserService.Register(&registerReq)
 	if err != nil {
-		if err == service.ErrUserAlreadyExists {
-			// 用户已存在，返回错误
-			sendRegisterResponse(request, 3, "用户已存在", nil)
-		} else {
-			// 其他错误，返回错误
-			sendRegisterResponse(request, 4, "注册失败: "+err.Error(), nil)
+		errMsg := "注册失败: " + err.Error()
+		var code uint32 = 4
+		// 检查是否是 service 层定义的特定错误，例如用户已存在
+		// 假设 service.Register 返回的 error 会包含 "username already exists" 或类似的具体信息
+		// 或者 service 层可以定义并返回如 service.ErrUserAlreadyExists
+		if errors.Is(err, service.ErrUserAlreadyExists) { // 确保这个错误在 service 层被定义和返回
+			errMsg = "用户已存在"
+			code = 3
 		}
+		sendRegisterResponse(request, code, errMsg, nil)
 		return
 	}
 
-	// 确保auth中间件已初始化
-	if r.auth == nil {
-		r.auth = middleware.NewAuthMiddleware()
-	}
+	// 注册成功
+	// 业务决定注册后是否自动登录并返回Token。
+	// 当前 UserRegisterResponse 的 Token 字段是 omitempty。
+	// 如果需要注册后自动登录, 则在此处调用 Login 服务获取Token。
+	// tokenString, _, err := global.UserService.Login(&model.UserLoginReq{Username: user.Username, Password: registerReq.Password})
+	// if err != nil { ... handle error ... }
 
-	// 生成JWT令牌
-	token, err := r.auth.GenerateToken(user.UserID, user.Username)
-	if err != nil {
-		fmt.Printf("[注册] 生成Token失败: %v\n", err)
-		sendRegisterResponse(request, 5, "生成令牌失败", nil)
-		return
-	}
-
-	// 如果启用了Redis会话验证，保存会话
-	r.auth.SaveSession(user.UserID, token)
-
-	// 构造返回数据(不含敏感信息)
-	responseData := &model.UserRegisterResponse{
-		UserID:   user.UserID,
+	responseData := model.UserRegisterResponse{
+		ID:       user.ID,
+		UserUUID: user.UserUUID,
 		Username: user.Username,
 		Email:    user.Email,
-		Token:    token,
+		Avatar:   user.Avatar,
+		// Token:    tokenString, // 如果上面获取了token
 	}
 
-	// 4. 返回成功响应
 	sendRegisterResponse(request, 0, "注册成功", responseData)
-	fmt.Printf("用户 %s 注册成功, ID: %s\n", user.Username, user.UserID)
+	fmt.Printf("User %s registered successfully, ID: %d, UUID: %s\n", user.Username, user.ID, user.UserUUID)
 }
 
-func sendRegisterResponse(requst ziface.IRequest, code uint32, message string, data interface{}) {
+func sendRegisterResponse(request ziface.IRequest, code uint32, message string, data interface{}) {
 	response := map[string]interface{}{
 		"code": code,
 		"msg":  message,
@@ -97,5 +91,5 @@ func sendRegisterResponse(requst ziface.IRequest, code uint32, message string, d
 		fmt.Printf("序列化失败: %v\n", err)
 		return
 	}
-	requst.GetConnection().SendMsg(protocol.MsgIDRegisterResp, jsonData)
+	request.GetConnection().SendMsg(protocol.MsgIDRegisterResp, jsonData)
 }

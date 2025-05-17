@@ -24,14 +24,21 @@ type ChatRelationRouter struct {
 
 func (r *ChatRelationRouter) Handle(request ziface.IRequest) {
 	// 1. 获取当前用户ID
-	userID, err := request.GetConnection().GetProperty("userID")
-	if err != nil {
+	userIDProp, err := request.GetConnection().GetProperty("userID")
+	if err != nil || userIDProp == nil {
 		sendChatRelationResponse(request, 1, "未登录用户", nil)
 		return
 	}
 
+	userID, ok := userIDProp.(uint)
+	if !ok {
+		fmt.Println("[聊天关系] 用户ID类型错误 on connection property")
+		sendChatRelationResponse(request, 1, "内部错误：用户ID无效", nil)
+		return
+	}
+
 	// 2. 获取用户的聊天关系列表
-	relations, err := global.MessageService.GetChatRelations(userID.(string))
+	relations, err := global.MessageService.GetChatRelations(userID)
 	if err != nil {
 		fmt.Printf("[聊天关系] 获取失败: %v\n", err)
 		sendChatRelationResponse(request, 2, "获取聊天关系失败", nil)

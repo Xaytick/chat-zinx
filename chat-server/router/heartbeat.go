@@ -26,7 +26,13 @@ func (hr *HeartbeatRouter) Handle(request ziface.IRequest) {
 		if usernameObj != nil {
 			username = usernameObj.(string)
 		}
-		fmt.Printf("收到用户 %s(ID=%s) 的心跳请求\n", username, userID.(string))
+		// Safely assert and print userID as uint
+		if uid, ok := userID.(uint); ok {
+			fmt.Printf("收到用户 %s(ID=%d) 的心跳请求\n", username, uid)
+		} else {
+			// Fallback or log error if type is not uint as expected
+			fmt.Printf("收到用户 %s(ID=%v, type error) 的心跳请求\n", username, userID)
+		}
 	} else {
 		fmt.Printf("收到未登录连接 (ConnID=%d) 的心跳请求\n", conn.GetConnID())
 	}
