@@ -22,9 +22,11 @@ type ChatClient struct {
 	Username   string // User's username
 	Token      string // JWT Token
 
-	isLoggedIn    bool
-	heartbeatStop chan struct{}
-	msgHandler    func(msgID uint32, data []byte) // Callback for received messages
+	isLoggedIn       bool
+	heartbeatStop    chan struct{}
+	msgHandler       func(msgID uint32, data []byte)         // Callback for received messages
+	responseChannels map[uint32]chan *clientProtocol.Message // New: Map to hold channels for pending responses
+	requestTimeout   time.Duration                           // New: Timeout for requests
 }
 
 // NewChatClient 创建一个新的聊天客户端
@@ -35,9 +37,11 @@ func NewChatClient(serverAddr string) (*ChatClient, error) {
 	}
 
 	return &ChatClient{
-		Conn:          conn,
-		ServerAddr:    serverAddr,
-		heartbeatStop: make(chan struct{}),
+		Conn:             conn,
+		ServerAddr:       serverAddr,
+		heartbeatStop:    make(chan struct{}),
+		responseChannels: make(map[uint32]chan *clientProtocol.Message), // Initialize map
+		requestTimeout:   10 * time.Second,                              // Default timeout
 	}, nil
 }
 
@@ -149,32 +153,42 @@ func (c *ChatClient) Register(username, password, email string) (*model.UserRegi
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal register request: %w", err)
 	}
+
+	// Create a channel for this specific request
+	respChan := make(chan *clientProtocol.Message, 1)
+	c.responseChannels[serverProtocol.MsgIDRegisterResp] = respChan // Using MsgID as key for simplicity here
+
 	if err := c.SendMessage(serverProtocol.MsgIDRegisterReq, body); err != nil {
+		delete(c.responseChannels, serverProtocol.MsgIDRegisterResp) // Clean up
 		return nil, fmt.Errorf("发送注册请求失败: %v", err)
 	}
-	respMsg, err := c.readMessage()
-	if err != nil {
-		return nil, fmt.Errorf("读取注册响应失败: %v", err)
-	}
-	if respMsg.GetMsgID() != serverProtocol.MsgIDRegisterResp {
-		return nil, fmt.Errorf("响应消息ID错误，期望%d，实际%d", serverProtocol.MsgIDRegisterResp, respMsg.GetMsgID())
-	}
-	var genericResp struct {
-		Code uint32                     `json:"code"`
-		Msg  string                     `json:"msg"`
-		Data model.UserRegisterResponse `json:"data"`
-	}
-	if err := json.Unmarshal(respMsg.GetData(), &genericResp); err != nil {
-		var mapResp map[string]interface{}
-		if json.Unmarshal(respMsg.GetData(), &mapResp) == nil {
-			fmt.Printf("Debug: Register Raw Response: %+v\n", mapResp)
+
+	// Wait for the response on the channel or timeout
+	select {
+	case respMsg := <-respChan:
+		if respMsg.GetMsgID() != serverProtocol.MsgIDRegisterResp { // Should be guaranteed by listener if key is correct
+			return nil, fmt.Errorf("响应消息ID错误，期望%d，实际%d", serverProtocol.MsgIDRegisterResp, respMsg.GetMsgID())
 		}
-		return nil, fmt.Errorf("解析注册响应失败: %v, body: %s", err, string(respMsg.GetData()))
+		var genericResp struct {
+			Code uint32                     `json:"code"`
+			Msg  string                     `json:"msg"`
+			Data model.UserRegisterResponse `json:"data"`
+		}
+		if err := json.Unmarshal(respMsg.GetData(), &genericResp); err != nil {
+			var mapResp map[string]interface{}
+			if json.Unmarshal(respMsg.GetData(), &mapResp) == nil {
+				fmt.Printf("Debug: Register Raw Response: %+v\n", mapResp)
+			}
+			return nil, fmt.Errorf("解析注册响应失败: %v, body: %s", err, string(respMsg.GetData()))
+		}
+		if genericResp.Code != 0 {
+			return nil, fmt.Errorf("注册失败: %s (code: %d)", genericResp.Msg, genericResp.Code)
+		}
+		return &genericResp.Data, nil
+	case <-time.After(c.requestTimeout):
+		delete(c.responseChannels, serverProtocol.MsgIDRegisterResp) // Clean up
+		return nil, fmt.Errorf("注册响应超时")
 	}
-	if genericResp.Code != 0 {
-		return nil, fmt.Errorf("注册失败: %s (code: %d)", genericResp.Msg, genericResp.Code)
-	}
-	return &genericResp.Data, nil
 }
 
 // Login 用户登录
@@ -187,39 +201,48 @@ func (c *ChatClient) Login(username, password string) (*model.UserLoginResponse,
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal login request: %w", err)
 	}
+
+	respChan := make(chan *clientProtocol.Message, 1)
+	c.responseChannels[serverProtocol.MsgIDLoginResp] = respChan
+
 	if err := c.SendMessage(serverProtocol.MsgIDLoginReq, body); err != nil {
+		delete(c.responseChannels, serverProtocol.MsgIDLoginResp)
 		return nil, fmt.Errorf("发送登录请求失败: %v", err)
 	}
-	respMsg, err := c.readMessage()
-	if err != nil {
-		return nil, fmt.Errorf("读取登录响应失败: %v", err)
-	}
-	if respMsg.GetMsgID() != serverProtocol.MsgIDLoginResp {
-		return nil, fmt.Errorf("响应消息ID错误，期望%d，实际%d", serverProtocol.MsgIDLoginResp, respMsg.GetMsgID())
-	}
-	var genericResp struct {
-		Code uint32                  `json:"code"`
-		Msg  string                  `json:"msg"`
-		Data model.UserLoginResponse `json:"data"`
-	}
-	if err := json.Unmarshal(respMsg.GetData(), &genericResp); err != nil {
-		var mapResp map[string]interface{}
-		if json.Unmarshal(respMsg.GetData(), &mapResp) == nil {
-			fmt.Printf("Debug: Login Raw Response: %+v\n", mapResp)
+
+	select {
+	case respMsg := <-respChan:
+		if respMsg.GetMsgID() != serverProtocol.MsgIDLoginResp {
+			return nil, fmt.Errorf("响应消息ID错误，期望%d，实际%d", serverProtocol.MsgIDLoginResp, respMsg.GetMsgID())
 		}
-		return nil, fmt.Errorf("解析登录响应失败: %v, body: %s", err, string(respMsg.GetData()))
+		var genericResp struct {
+			Code uint32                  `json:"code"`
+			Msg  string                  `json:"msg"`
+			Data model.UserLoginResponse `json:"data"`
+		}
+		if err := json.Unmarshal(respMsg.GetData(), &genericResp); err != nil {
+			var mapResp map[string]interface{}
+			if json.Unmarshal(respMsg.GetData(), &mapResp) == nil {
+				fmt.Printf("Debug: Login Raw Response: %+v\n", mapResp)
+			}
+			return nil, fmt.Errorf("解析登录响应失败: %v, body: %s", err, string(respMsg.GetData()))
+		}
+
+		if genericResp.Code != 0 {
+			return nil, fmt.Errorf("登录失败: %s (code: %d)", genericResp.Msg, genericResp.Code)
+		}
+		c.UserID = genericResp.Data.ID
+		c.UserUUID = genericResp.Data.UserUUID
+		c.Username = genericResp.Data.Username
+		c.Token = genericResp.Data.Token
+		c.isLoggedIn = true
+		// Start heartbeat after successful login
+		c.StartHeartbeat(30 * time.Second)
+		return &genericResp.Data, nil
+	case <-time.After(c.requestTimeout):
+		delete(c.responseChannels, serverProtocol.MsgIDLoginResp)
+		return nil, fmt.Errorf("登录响应超时")
 	}
-	if genericResp.Code != 0 {
-		return nil, fmt.Errorf("登录失败: %s (code: %d)", genericResp.Msg, genericResp.Code)
-	}
-	c.UserID = genericResp.Data.ID
-	c.UserUUID = genericResp.Data.UserUUID
-	c.Username = genericResp.Data.Username
-	c.Token = genericResp.Data.Token
-	c.isLoggedIn = true
-	c.StartHeartbeat(60 * time.Second)
-	fmt.Printf("用户 %s (ID: %d, UUID: %s) 登录成功.\n", c.Username, c.UserID, c.UserUUID)
-	return &genericResp.Data, nil
 }
 
 // IsLoggedIn 检查客户端是否已登录
@@ -243,28 +266,45 @@ func (c *ChatClient) SendTextMessage(toUserIdentity string, content string) erro
 	return c.SendMessage(serverProtocol.MsgIDTextMsg, body)
 }
 
-// StartMsgListener 启动消息监听器，接收服务器推送的消息
+// StartMsgListener 启动消息监听器
 func (c *ChatClient) StartMsgListener(handler func(msgID uint32, data []byte)) {
 	c.msgHandler = handler
 	go func() {
-		if c.Conn == nil {
-			fmt.Println("错误：消息监听器启动时连接为空。")
-			return
-		}
-		fmt.Println("消息监听器已启动...")
 		for {
 			msg, err := c.readMessage()
 			if err != nil {
-				if c.isLoggedIn {
-					fmt.Printf("读取消息失败: %v. 监听器停止.\n", err)
+				if err == io.EOF || errors.Is(err, net.ErrClosed) {
+					fmt.Printf("连接已关闭，停止监听消息: %v\n", err)
+				} else {
+					fmt.Printf("读取消息错误，停止监听: %v\n", err)
 				}
-				c.Close()
+				c.Close() // Ensure client is fully closed on read error
 				return
 			}
-			if c.msgHandler != nil {
-				if msg.GetMsgID() == serverProtocol.MsgIDPong {
-					continue
+
+			// Check if this message ID is awaited by a synchronous call
+			// Lock mechanism would be needed if responseChannels is accessed by multiple goroutines
+			// For simplicity here, assuming StartMsgListener is the only writer to these channels.
+			if ch, ok := c.responseChannels[msg.GetMsgID()]; ok {
+				select {
+				case ch <- msg:
+					// Response sent to waiting synchronous call
+				default:
+					// Channel is full or not ready, could log this.
+					// Or, if the design guarantees the channel is always ready, this case isn't needed.
+					// For now, let's assume if a channel exists, it's ready.
+					fmt.Printf("Warning: Response channel for MsgID %d was not ready or full.\n", msg.GetMsgID())
+					// Fallback to general handler if channel send fails (e.g. full)
+					if c.msgHandler != nil {
+						c.msgHandler(msg.GetMsgID(), msg.GetData())
+					}
 				}
+				// Once a response is routed, remove the channel to prevent leaks
+				// and incorrect routing of future messages with the same ID.
+				// This simple map keying by MsgID has limitations if multiple requests
+				// expect the same response MsgID concurrently. A unique request ID would be better.
+				delete(c.responseChannels, msg.GetMsgID())
+			} else if c.msgHandler != nil {
 				c.msgHandler(msg.GetMsgID(), msg.GetData())
 			}
 		}

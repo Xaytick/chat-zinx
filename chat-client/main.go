@@ -203,6 +203,10 @@ func handleConnect(args []string) {
 func handleIncomingMessages(msgID uint32, data []byte) {
 	var output string
 	switch msgID {
+	case serverProtocol.MsgIDPong:
+		// Pong 消息是心跳响应，通常不需要向用户显示
+		// fmt.Println("[DEBUG] Received Pong") // 可以保留用于调试
+		return // 直接返回，不设置 output，就不会打印到控制台
 	case serverProtocol.MsgIDTextMsg:
 		var msg model.TextMsg
 		if err := json.Unmarshal(data, &msg); err == nil {

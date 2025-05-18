@@ -33,7 +33,7 @@ func InitMySQL(cfg *conf.MySQLConfig) (err error) {
 		log.New(os.Stdout, "\r\n", log.LstdFlags),
 		logger.Config{
 			SlowThreshold:             time.Second,
-			LogLevel:                  logger.Info,
+			LogLevel:                  logger.Warn,
 			IgnoreRecordNotFoundError: false, // Set to false to handle it explicitly
 			Colorful:                  true,
 		},
