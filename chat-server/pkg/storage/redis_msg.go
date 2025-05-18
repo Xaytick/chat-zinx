@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -197,24 +198,63 @@ func (s *RedisMsgStorage) HasOfflineMessages(userID uint) (bool, error) {
 func (s *RedisMsgStorage) GetHistoryMessages(userID1, userID2 uint, limit int64) ([]map[string]interface{}, error) {
 	historyKey := generateHistoryKey(userID1, userID2)
 
-	// 获取最近的消息
 	results, err := redis.RedisClient.LRange(redis.Ctx, historyKey, -limit, -1).Result()
 	if err != nil {
+		fmt.Printf("[Redis历史-查询] Error on LRange for key %s: %v\n", historyKey, err)
 		return nil, err
 	}
 
-	// 解析消息元数据
-	messages := make([]map[string]interface{}, 0, len(results))
-	for _, result := range results {
-		var msgMeta map[string]interface{}
-		if err := json.Unmarshal([]byte(result), &msgMeta); err != nil {
-			fmt.Printf("[Redis消息] 解析历史消息元数据失败: %v\n", err)
-			continue
-		}
-		messages = append(messages, msgMeta)
+	if len(results) == 0 {
+		fmt.Printf("[Redis历史-查询] No messages found in Redis for key %s.\n", historyKey)
 	}
 
-	return messages, nil
+	messagesForClient := make([]map[string]interface{}, 0, len(results))
+	for _, resultStr := range results { // Removed index 'i' as it's no longer used for logging
+		var msgMeta map[string]interface{}
+		if err := json.Unmarshal([]byte(resultStr), &msgMeta); err != nil {
+			// Keep this log as it indicates a data corruption/parsing issue
+			fmt.Printf("[RedisStorage] GetHistoryMessages: Failed to unmarshal msgMeta: %v. Original: %s\n", err, resultStr)
+			continue
+		}
+
+		originalMsgData, ok := msgMeta["data"].(string)
+		if !ok {
+			if dataBytes, okBytes := msgMeta["data"].([]interface{}); okBytes {
+				tempBytes := make([]byte, len(dataBytes))
+				for idx, v := range dataBytes {
+					tempBytes[idx] = byte(v.(float64))
+				}
+				originalMsgData = string(tempBytes)
+			} else {
+				// Keep this log as it indicates a data structure issue
+				fmt.Printf("[RedisStorage] GetHistoryMessages: 'data' field type is unexpected or missing in msgMeta: %+v. Skipping.\n", msgMeta)
+				continue
+			}
+		}
+
+		decodedData, err := base64.StdEncoding.DecodeString(originalMsgData)
+		if err != nil {
+			// Keep this log as it indicates a data corruption/decoding issue
+			fmt.Printf("[RedisStorage] GetHistoryMessages: Failed to Base64 decode originalMsgData: %v. Original data string: %s. Skipping.\n", err, originalMsgData)
+			continue
+		}
+
+		var textMsgPayload model.TextMsg
+		if err := json.Unmarshal(decodedData, &textMsgPayload); err != nil {
+			// Keep this log as it indicates a data corruption/parsing issue
+			fmt.Printf("[RedisStorage] GetHistoryMessages: Failed to unmarshal TextMsg from decodedData: %v. Decoded data string: %s. Skipping.\n", err, string(decodedData))
+			continue
+		}
+
+		clientMap := map[string]interface{}{
+			"from_user_id": msgMeta["from_user_id"],
+			"content":      textMsgPayload.Content,
+			"timestamp":    msgMeta["timestamp"],
+		}
+		messagesForClient = append(messagesForClient, clientMap)
+	}
+
+	return messagesForClient, nil
 }
 
 // GetChatRelations 获取用户的聊天关系列表

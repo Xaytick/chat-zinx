@@ -4,24 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"errors"
+
 	"github.com/Xaytick/chat-zinx/chat-server/global"
+	"github.com/Xaytick/chat-zinx/chat-server/pkg/model"
 	"github.com/Xaytick/chat-zinx/chat-server/pkg/protocol"
+	"github.com/Xaytick/chat-zinx/chat-server/pkg/service"
 	"github.com/Xaytick/zinx/ziface"
 	"github.com/Xaytick/zinx/znet"
 )
-
-// 历史消息请求结构
-type HistoryMsgReq struct {
-	TargetUserUUID string `json:"target_user_uuid"`
-	Limit          int    `json:"limit"`
-}
-
-// 历史消息响应结构
-type HistoryMsgResp struct {
-	Code    uint32                   `json:"code"`
-	Message string                   `json:"message"`
-	Data    []map[string]interface{} `json:"data"`
-}
 
 // HistoryMsgRouter 处理历史消息请求
 type HistoryMsgRouter struct {
@@ -32,7 +23,7 @@ func (r *HistoryMsgRouter) Handle(request ziface.IRequest) {
 	// 1. 获取当前用户ID
 	fromUserIDProp, err := request.GetConnection().GetProperty("userID")
 	if err != nil || fromUserIDProp == nil {
-		sendHistoryResponse(request, 1, "未登录用户", nil)
+		sendHistoryResponse(request, 1, "用户未登录或会话无效", nil)
 		return
 	}
 	fromUserIDUint, ok := fromUserIDProp.(uint)
@@ -43,35 +34,54 @@ func (r *HistoryMsgRouter) Handle(request ziface.IRequest) {
 	}
 
 	// 2. 解析请求
-	var req HistoryMsgReq
+	var req model.HistoryMsgReq
 	if err := json.Unmarshal(request.GetData(), &req); err != nil {
 		sendHistoryResponse(request, 2, "请求格式错误", nil)
 		return
 	}
 
-	// 3. 验证参数
-	if req.TargetUserUUID == "" {
-		sendHistoryResponse(request, 3, "目标用户UUID不能为空", nil)
+	// 3. 确定目标用户
+	var targetUser *model.User
+
+	if req.TargetUserUUID != "" {
+		targetUser, err = global.UserService.GetUserByUUID(req.TargetUserUUID)
+		if err != nil {
+			if errors.Is(err, service.ErrUserNotFound) {
+				sendHistoryResponse(request, 3, fmt.Sprintf("目标用户UUID %s 不存在", req.TargetUserUUID), nil)
+			} else {
+				fmt.Printf("[历史消息] 根据UUID查找目标用户 %s 失败: %v\n", req.TargetUserUUID, err)
+				sendHistoryResponse(request, 3, "查找目标用户失败", nil)
+			}
+			return
+		}
+	} else if req.TargetUsername != "" {
+		targetUser, err = global.UserService.GetUserByUsername(req.TargetUsername)
+		if err != nil {
+			if errors.Is(err, service.ErrUserNotFound) {
+				sendHistoryResponse(request, 3, fmt.Sprintf("目标用户 %s 不存在", req.TargetUsername), nil)
+			} else {
+				fmt.Printf("[历史消息] 根据Username查找目标用户 %s 失败: %v\n", req.TargetUsername, err)
+				sendHistoryResponse(request, 3, "查找目标用户失败", nil)
+			}
+			return
+		}
+	} else {
+		sendHistoryResponse(request, 3, "必须提供目标用户的UUID或用户名", nil)
 		return
 	}
 
-	// 设置默认限制
+	if targetUser == nil {
+		sendHistoryResponse(request, 3, "无法确定目标用户", nil)
+		return
+	}
+	targetUserIDUint := targetUser.ID
+
+	// 4. 设置默认限制
 	if req.Limit <= 0 {
 		req.Limit = 50
 	} else if req.Limit > 200 {
 		req.Limit = 200
 	}
-
-	// 4. 根据 TargetUserUUID 查找目标用户以获取其 uint ID
-	targetUser, err := global.UserService.GetUserByUUID(req.TargetUserUUID)
-	if err != nil || targetUser == nil {
-		fmt.Printf("[历史消息] 查找目标用户 %s 失败: %v\n", req.TargetUserUUID, err)
-		// Check if it might be a username or numeric ID if GetUserByUUID fails
-		// For now, assume UUID is provided or fail.
-		sendHistoryResponse(request, 3, "目标用户不存在", nil)
-		return
-	}
-	targetUserIDUint := targetUser.ID
 
 	// 5. 获取历史消息
 	messages, err := global.MessageService.GetHistoryMessages(fromUserIDUint, targetUserIDUint, req.Limit)
@@ -87,7 +97,7 @@ func (r *HistoryMsgRouter) Handle(request ziface.IRequest) {
 
 // 发送历史消息响应
 func sendHistoryResponse(request ziface.IRequest, code uint32, message string, data []map[string]interface{}) {
-	response := HistoryMsgResp{
+	response := model.HistoryMsgResp{
 		Code:    code,
 		Message: message,
 		Data:    data,
@@ -95,7 +105,7 @@ func sendHistoryResponse(request ziface.IRequest, code uint32, message string, d
 
 	jsonData, err := json.Marshal(response)
 	if err != nil {
-		fmt.Printf("序列化失败: %v\n", err)
+		fmt.Printf("序列化历史消息响应失败: %v\n", err)
 		return
 	}
 	request.GetConnection().SendMsg(protocol.MsgIDHistoryMsgResp, jsonData)

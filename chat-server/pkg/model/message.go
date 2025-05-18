@@ -19,8 +19,9 @@ type TextMsg struct {
 // HistoryMsgReq 获取历史消息请求结构
 // 由客户端发送给服务端
 type HistoryMsgReq struct {
-	TargetUserUUID string `json:"target_user_uuid"` // 目标用户UUID (与谁的聊天历史)
-	Limit          int    `json:"limit"`            // 获取消息的数量限制
+	TargetUserUUID string `json:"target_user_uuid,omitempty"` // 目标用户UUID (可选, 与谁的聊天历史)
+	TargetUsername string `json:"target_username,omitempty"`  // 目标用户名 (可选, 与谁的聊天历史)
+	Limit          int    `json:"limit"`                      // 获取消息的数量限制
 }
 
 // HistoryMsgResp 历史消息响应结构

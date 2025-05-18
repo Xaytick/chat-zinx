@@ -360,10 +360,10 @@ func handleHistory(args []string) {
 		return
 	}
 	if len(args) < 1 {
-		outputChan <- "用法: /history <target_user_uuid> [limit]"
+		outputChan <- "用法: /history <对方用户名或UUID> [limit]"
 		return
 	}
-	targetUUID := args[0]
+	targetIdentity := args[0]
 	limit := 20 // Default limit for history
 	if len(args) > 1 {
 		var err error
@@ -373,7 +373,7 @@ func handleHistory(args []string) {
 			limit = 20
 		}
 	}
-	err := cli.SendHistoryMessageReq(targetUUID, limit)
+	err := cli.SendHistoryMessageReq(targetIdentity, limit)
 	if err != nil {
 		outputChan <- fmt.Sprintf("发送历史消息请求失败: %v", err)
 	} else {
@@ -451,11 +451,11 @@ func handleLeaveGroup(args []string) {
 func handleHelp() {
 	outputChan <- "可用命令:"
 	outputChan <- "  /connect [host:port] - 连接到服务器 (默认 127.0.0.1:9000)"
-	outputChan <- "  /register <username> <password> - 注册新用户"
+	outputChan <- "  /register <username> <password> <email> - 注册新用户"
 	outputChan <- "  /login <username> <password> - 登录"
 	outputChan <- "  /msg <接收者用户名/UserUUID> [消息内容...] - 发送消息"
-	outputChan <- "  /history <对方UserUUID> [页码] [每页条数] - 获取与某人的历史消息"
-	outputChan <- "  /creategroup <群名称> - 创建群组"
+	outputChan <- "  /history <对方用户名或UUID> [limit] - 获取与某人的历史消息"
+	outputChan <- "  /creategroup <群名称> [描述] [头像URL] - 创建群组"
 	outputChan <- "  /joingroup <群ID> - 加入群组"
 	outputChan <- "  /leavegroup <群ID> - 离开群组"
 	outputChan <- "  /cancel - 取消当前操作 (例如，在输入多行消息时)"
