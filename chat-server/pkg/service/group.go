@@ -7,6 +7,11 @@ type IGroupService interface {
 	CreateGroup(userID uint, req *model.CreateGroupReq) (*model.Group, error)
 	JoinGroup(userID uint, req *model.JoinGroupReq) error
 	LeaveGroup(userID uint, req *model.LeaveGroupReq) error
+
+	// Methods for group messaging and info retrieval
+	IsUserInGroup(userID uint, groupID uint) (bool, error)
+	GetGroupMemberIDs(groupID uint) ([]uint, error)
+
 	// GetGroupDetails(groupID uint) (*model.Group, error) // 暂未实现，后续可添加获取群详细信息（包括成员列表）
 	// GetUserGroups(userID uint) ([]*model.GroupBasicInfo, error) // 暂未实现，后续可添加获取用户加入的群列表
 }

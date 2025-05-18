@@ -143,3 +143,14 @@ func GetUserGroups(userID uint) ([]*model.Group, error) {
 	}
 	return groups, nil
 }
+
+// GetGroupMemberIDs 获取群组所有成员的 UserID 列表 (GORM实现)
+func GetGroupMemberIDs(groupID uint) ([]uint, error) {
+	var userIDs []uint
+	// SELECT user_id FROM group_members WHERE group_id = ?
+	err := DB.Model(&model.GroupMember{}).Where("group_id = ?", groupID).Pluck("user_id", &userIDs).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get group member IDs: %w", err)
+	}
+	return userIDs, nil
+}

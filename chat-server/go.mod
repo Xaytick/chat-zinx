@@ -2,7 +2,7 @@ module github.com/Xaytick/chat-zinx/chat-server
 
 go 1.24.1
 
-require github.com/Xaytick/zinx v0.0.0-20250515135912-f7eedf30ce5f
+require github.com/Xaytick/zinx v0.0.0-20250518152801-3cac1b237c94
 
 require golang.org/x/text v0.25.0 // indirect
 

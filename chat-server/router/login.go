@@ -70,6 +70,9 @@ func (lr *LoginRouter) Handle(request ziface.IRequest) {
 
 	fmt.Printf("User %s (ID: %d, UUID: %s) logged in successfully.\n", user.Username, user.ID, user.UserUUID)
 
+	connMgr := global.GlobalServer.GetConnManager()
+	connMgr.SetConnByUserID(request.GetConnection().GetConnID(), user.ID)
+
 	// 构造返回数据
 	responseData := model.UserLoginResponse{
 		ID:        user.ID,

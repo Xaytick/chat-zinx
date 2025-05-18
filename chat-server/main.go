@@ -65,6 +65,8 @@ func main() {
 	global.GlobalServer.AddRouter(protocol.MsgIDCreateGroupReq, &router.CreateGroupRouter{})
 	global.GlobalServer.AddRouter(protocol.MsgIDJoinGroupReq, &router.JoinGroupRouter{})
 	global.GlobalServer.AddRouter(protocol.MsgIDLeaveGroupReq, &router.LeaveGroupRouter{})
+	// 群组消息路由
+	global.GlobalServer.AddRouter(protocol.MsgIDGroupTextMsgReq, &router.GroupTextMsgRouter{})
 
 	// 6. 设置心跳检测，启用心跳检测会自动启动心跳路由
 	fmt.Println("启用心跳检测...")

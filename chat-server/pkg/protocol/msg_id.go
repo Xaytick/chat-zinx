@@ -35,6 +35,11 @@ const (
 	MsgIDGetUserGroupsReq    // 217: 获取用户加入的群列表请求
 	MsgIDGetUserGroupsResp   // 218: 获取用户加入的群列表响应
 	// 后续可以添加更多群管理相关的消息ID，如踢人、授权等
+
+	// 群组消息相关 310 - 319
+	MsgIDGroupTextMsgReq  uint32 = 310 // C->S 发送群组文本消息请求
+	MsgIDGroupTextMsgResp uint32 = 311 // S->C 发送群组文本消息响应
+	MsgIDGroupTextMsgPush uint32 = 312 // S->C 推送群组文本消息
 )
 
 // 单独定义通用错误响应ID，避免破坏现有 iota 序列

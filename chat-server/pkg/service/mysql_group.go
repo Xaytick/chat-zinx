@@ -111,3 +111,13 @@ func (s *groupService) LeaveGroup(userID uint, req *model.LeaveGroupReq) error {
 	}
 	return nil
 }
+
+// IsUserInGroup 检查用户是否在指定的群组中
+func (s *groupService) IsUserInGroup(userID uint, groupID uint) (bool, error) {
+	return mysql.IsUserInGroup(userID, groupID)
+}
+
+// GetGroupMemberIDs 获取指定群组的所有成员 UserID 列表
+func (s *groupService) GetGroupMemberIDs(groupID uint) ([]uint, error) {
+	return mysql.GetGroupMemberIDs(groupID)
+}
