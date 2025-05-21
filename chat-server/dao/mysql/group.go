@@ -154,3 +154,34 @@ func GetGroupMemberIDs(groupID uint) ([]uint, error) {
 	}
 	return userIDs, nil
 }
+
+// --- 新增DAO方法 --- //
+
+// UpdateGroupMemberRole 更新群组成员角色 (GORM实现)
+func UpdateGroupMemberRole(groupID, userID uint, newRole string) error {
+	result := DB.Model(&model.GroupMember{}).
+		Where("group_id = ? AND user_id = ?", groupID, userID).
+		Updates(map[string]interface{}{
+			"role":       newRole,
+			"updated_at": time.Now(),
+		})
+	if result.Error != nil {
+		return fmt.Errorf("failed to update group member role: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("member not found or no changes made")
+	}
+	return nil
+}
+
+// UpdateGroupInfo 更新群组信息 (GORM实现)
+func UpdateGroupInfo(groupID uint, updates map[string]interface{}) error {
+	result := DB.Model(&model.Group{}).Where("id = ?", groupID).Updates(updates)
+	if result.Error != nil {
+		return fmt.Errorf("failed to update group info: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("group not found or no changes made")
+	}
+	return nil
+}

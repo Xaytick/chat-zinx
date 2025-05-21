@@ -23,7 +23,8 @@ var doneChan = make(chan struct{}) // Channel to signal graceful shutdown
 // For handling console output without clashing with input prompt
 var outputChan = make(chan string, 100)
 
-var expectingMessageContentForRecipient string // If not empty, next input is message content for this recipient
+var expectingMessageContentForRecipient string      // 如果不为空，下一个输入是发给此接收者的消息内容
+var expectingGroupMessageContentForGroup uint32 = 0 // 如果不为0，下一个输入是发给此群组的消息内容
 
 func main() {
 	go consoleOutputRoutine() // Start a goroutine to handle all console output
@@ -43,9 +44,10 @@ func main() {
 	go func() {
 		<-sigChan // Wait for SIGINT or SIGTERM
 		outputChan <- "\n检测到中断信号，正在关闭..."
-		if expectingMessageContentForRecipient != "" { // If waiting for content, cancel it
+		if expectingMessageContentForRecipient != "" || expectingGroupMessageContentForGroup != 0 { // 如果等待输入内容，取消它
 			outputChan <- "当前消息输入已取消。"
 			expectingMessageContentForRecipient = ""
+			expectingGroupMessageContentForGroup = 0
 		}
 		if cli != nil {
 			cli.Close()
@@ -55,7 +57,7 @@ func main() {
 
 mainLoop:
 	for {
-		if expectingMessageContentForRecipient == "" {
+		if expectingMessageContentForRecipient == "" && expectingGroupMessageContentForGroup == 0 {
 			fmt.Print("> ")
 		} else {
 			// Prompt is handled by the command that sets expectingMessageContentForRecipient
@@ -89,6 +91,7 @@ mainLoop:
 
 		input = strings.TrimSpace(input)
 
+		// 处理私聊消息输入
 		if expectingMessageContentForRecipient != "" {
 			if input == "/cancel" {
 				outputChan <- "消息发送已取消。"
@@ -102,6 +105,23 @@ mainLoop:
 			}
 			cli.SendTextMessage(expectingMessageContentForRecipient, input)
 			expectingMessageContentForRecipient = "" // Reset after sending
+			continue                                 // Go back to expecting a command
+		}
+
+		// 处理群聊消息输入
+		if expectingGroupMessageContentForGroup != 0 {
+			if input == "/cancel" {
+				outputChan <- "群组消息发送已取消。"
+				expectingGroupMessageContentForGroup = 0
+				continue // Go back to expecting a command
+			}
+			if strings.TrimSpace(input) == "" {
+				outputChan <- "不能发送空消息。操作已取消。"
+				expectingGroupMessageContentForGroup = 0
+				continue
+			}
+			cli.SendGroupTextMessage(expectingGroupMessageContentForGroup, input)
+			expectingGroupMessageContentForGroup = 0 // Reset after sending
 			continue                                 // Go back to expecting a command
 		}
 
@@ -122,8 +142,12 @@ mainLoop:
 			handleLogin(args)
 		case "/msg":
 			handleSendMsg(args) // This will now set expectingMessageContentForRecipient if needed
+		case "/groupmsg":
+			handleSendGroupMsg(args) // 设置expectingGroupMessageContentForGroup
 		case "/history":
 			handleHistory(args)
+		case "/grouphistory":
+			handleGroupHistory(args)
 		case "/creategroup":
 			handleCreateGroup(args)
 		case "/joingroup":
@@ -216,6 +240,13 @@ func handleIncomingMessages(msgID uint32, data []byte) {
 		} else {
 			output = fmt.Sprintf("[错误] 解析文本消息失败: %v. 内容: %s", err, string(data))
 		}
+	case serverProtocol.MsgIDGroupTextMsgPush:
+		var msg model.GroupTextMsgPush
+		if err := json.Unmarshal(data, &msg); err == nil {
+			output = fmt.Sprintf("[群组消息] 群组%d - %s: %s", msg.GroupID, msg.FromUsername, msg.Content)
+		} else {
+			output = fmt.Sprintf("[错误] 解析群组消息失败: %v. 内容: %s", err, string(data))
+		}
 	case serverProtocol.MsgIDCreateGroupResp:
 		var resp model.CreateGroupResp
 		if err := json.Unmarshal(data, &resp); err == nil {
@@ -251,8 +282,19 @@ func handleIncomingMessages(msgID uint32, data []byte) {
 		} else {
 			output = fmt.Sprintf("[错误] 解析离开群组响应失败: %v. 内容: %s", err, string(data))
 		}
+	case serverProtocol.MsgIDGroupTextMsgResp:
+		var resp model.GroupTextMsgResp
+		if err := json.Unmarshal(data, &resp); err == nil {
+			if resp.Status == 0 {
+				output = fmt.Sprintf("[群组] 消息发送成功，服务器已接收 (MsgID: %s)", resp.MsgID)
+			} else {
+				output = fmt.Sprintf("[错误] 群组消息发送失败: %s (Status: %d)", resp.Error, resp.Status)
+			}
+		} else {
+			output = fmt.Sprintf("[错误] 解析群组消息响应失败: %v. 内容: %s", err, string(data))
+		}
 	case serverProtocol.MsgIDHistoryMsgResp:
-		var resp model.HistoryMsgResp
+		var resp model.LegacyHistoryMsgResp
 		if err := json.Unmarshal(data, &resp); err == nil {
 			if resp.Code == 0 {
 				var historyOutput strings.Builder
@@ -280,6 +322,30 @@ func handleIncomingMessages(msgID uint32, data []byte) {
 			}
 		} else {
 			output = fmt.Sprintf("[错误] 解析历史消息响应失败: %v. 内容: %s", err, string(data))
+		}
+	case serverProtocol.MsgIDGroupHistoryMsgResp:
+		var resp model.GroupHistoryMsgResp
+		if err := json.Unmarshal(data, &resp); err == nil {
+			var historyOutput strings.Builder
+			historyOutput.WriteString(fmt.Sprintf("[群组%d历史消息]", resp.GroupID))
+			if len(resp.Messages) == 0 {
+				historyOutput.WriteString("\n  (无历史消息)")
+			}
+			for i, msg := range resp.Messages {
+				timestamp := time.Unix(msg.Timestamp, 0).Format("2006-01-02 15:04:05")
+				historyOutput.WriteString(fmt.Sprintf("\n  %d. [%s] (%s): %s", i+1, msg.SenderName, timestamp, msg.Content))
+			}
+			if resp.HasMore {
+				historyOutput.WriteString("\n  (还有更多消息，使用最后一条消息的ID作为LastID参数可继续查询)")
+			}
+			output = historyOutput.String()
+		} else {
+			var errResp map[string]string
+			if json.Unmarshal(data, &errResp) == nil && errResp["error"] != "" {
+				output = fmt.Sprintf("[错误] 获取群组历史消息失败: %s", errResp["error"])
+			} else {
+				output = fmt.Sprintf("[错误] 解析群组历史消息响应失败: %v. 内容: %s", err, string(data))
+			}
 		}
 	case serverProtocol.MsgIDErrorResp: // Generic error response from server
 		var errResp model.GenericMessageResp
@@ -355,6 +421,37 @@ func handleSendMsg(args []string) {
 	}
 }
 
+// 处理发送群组消息
+func handleSendGroupMsg(args []string) {
+	if !ensureLoggedIn() {
+		return
+	}
+	if len(args) < 1 {
+		outputChan <- "用法: /groupmsg <群组ID> [消息内容...]"
+		outputChan <- "如果未提供消息内容，将提示您输入。"
+		return
+	}
+
+	groupID, err := strconv.ParseUint(args[0], 10, 32)
+	if err != nil {
+		outputChan <- "无效的群组ID。"
+		return
+	}
+
+	if len(args) > 1 {
+		content := strings.Join(args[1:], " ")
+		if strings.TrimSpace(content) == "" {
+			outputChan <- "不能发送空消息。"
+			return
+		}
+		cli.SendGroupTextMessage(uint32(groupID), content)
+	} else {
+		// 设置下一次输入是给这个群组的消息
+		expectingGroupMessageContentForGroup = uint32(groupID)
+		outputChan <- fmt.Sprintf("请输入消息内容给群组%d (或输入 /cancel 取消):", groupID)
+	}
+}
+
 func handleHistory(args []string) {
 	if !ensureLoggedIn() {
 		return
@@ -381,12 +478,55 @@ func handleHistory(args []string) {
 	}
 }
 
+// 处理获取群组历史消息
+func handleGroupHistory(args []string) {
+	if !ensureLoggedIn() {
+		return
+	}
+	if len(args) < 1 {
+		outputChan <- "用法: /grouphistory <群组ID> [最后一条消息ID] [limit]"
+		return
+	}
+
+	groupID, err := strconv.ParseUint(args[0], 10, 32)
+	if err != nil {
+		outputChan <- "无效的群组ID。"
+		return
+	}
+
+	var lastID uint64 = 0
+	if len(args) > 1 {
+		lastID, err = strconv.ParseUint(args[1], 10, 32)
+		if err != nil {
+			outputChan <- "无效的最后一条消息ID，将从最新消息开始获取。"
+			lastID = 0
+		}
+	}
+
+	limit := 20 // Default limit
+	if len(args) > 2 {
+		var err error
+		limit, err = strconv.Atoi(args[2])
+		if err != nil || limit <= 0 {
+			outputChan <- "无效的 limit 参数，使用默认值 20。"
+			limit = 20
+		}
+	}
+
+	err = cli.SendGroupHistoryMessageReq(uint(groupID), uint(lastID), limit)
+	if err != nil {
+		outputChan <- fmt.Sprintf("发送群组历史消息请求失败: %v", err)
+	} else {
+		outputChan <- "群组历史消息请求已发送。等待响应..."
+	}
+}
+
 func handleCreateGroup(args []string) {
 	if !ensureLoggedIn() {
 		return
 	}
 	if len(args) < 1 {
-		outputChan <- "用法: /creategroup <group_name> [description] [avatar_url]"
+		outputChan <- "用法: /creategroup <群名称> [描述] [头像URL]"
 		return
 	}
 	name := args[0]
@@ -453,8 +593,10 @@ func handleHelp() {
 	outputChan <- "  /connect [host:port] - 连接到服务器 (默认 127.0.0.1:9000)"
 	outputChan <- "  /register <username> <password> <email> - 注册新用户"
 	outputChan <- "  /login <username> <password> - 登录"
-	outputChan <- "  /msg <接收者用户名/UserUUID> [消息内容...] - 发送消息"
+	outputChan <- "  /msg <接收者用户名/UserUUID> [消息内容...] - 发送私聊消息"
+	outputChan <- "  /groupmsg <群组ID> [消息内容...] - 发送群聊消息"
 	outputChan <- "  /history <对方用户名或UUID> [limit] - 获取与某人的历史消息"
+	outputChan <- "  /grouphistory <群组ID> [最后一条消息ID] [limit] - 获取群组历史消息"
 	outputChan <- "  /creategroup <群名称> [描述] [头像URL] - 创建群组"
 	outputChan <- "  /joingroup <群ID> - 加入群组"
 	outputChan <- "  /leavegroup <群ID> - 离开群组"

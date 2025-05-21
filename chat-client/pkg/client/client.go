@@ -316,13 +316,11 @@ func (c *ChatClient) SendHistoryMessageReq(targetUserIdentity string, limit int)
 	if !c.isLoggedIn {
 		return errors.New("请先登录")
 	}
-	req := model.HistoryMsgReq{
-		// 客户端现在发送的是用户输入的标识，可能是Username，也可能是UUID
+	req := model.LegacyHistoryMsgReq{
+		// 客户端发送的是用户输入的标识，可能是Username，也可能是UUID
 		// 根据服务器端的逻辑，它会先尝试UUID，再尝试Username
-		// 为了简单，客户端可以直接填充 TargetUsername，或者智能判断一下
-		// 这里我们选择都填充，让服务端决定。更优的方案是客户端明确知道发的是Username还是UUID
-		// TargetUserUUID: targetUserIdentity, // 如果想让客户端做判断，可以取消注释并添加逻辑
-		TargetUsername: targetUserIdentity, // 主要通过Username查询
+		TargetUserUUID: targetUserIdentity, // 先尝试作为UUID
+		TargetUsername: targetUserIdentity, // 如果UUID不存在，则尝试Username
 		Limit:          limit,
 	}
 	body, err := json.Marshal(req)
@@ -333,12 +331,6 @@ func (c *ChatClient) SendHistoryMessageReq(targetUserIdentity string, limit int)
 	// 历史消息请求通常期望一个响应，也应该使用 responseChannels 机制
 	// 但当前的 HistoryMsgRouter 是直接推消息，没有让客户端等待特定响应的channel
 	// 为了和 Register/Login 保持一致性，可以改造，但这里先保持原样，仅发送请求
-	// 如果需要同步等待，则需要像Login/Register那样创建channel并等待。
-	// 对于历史消息，通常是异步获取后显示，所以当前直接发送请求的模式也可以接受。
-	// 后续如果要改成同步获取，需要：
-	// 1. 在 Handle 中设定 responseChannel[serverProtocol.MsgIDHistoryMsgResp]
-	// 2. 在 StartMsgListener 中增加对 serverProtocol.MsgIDHistoryMsgResp 的处理，将其推送到channel
-	// 3. SendHistoryMessageReq 中 select 等待 channel 或超时
 	return c.SendMessage(serverProtocol.MsgIDHistoryMsgReq, body)
 }
 
@@ -387,4 +379,37 @@ func (c *ChatClient) SendLeaveGroupReq(groupID uint) error {
 		return fmt.Errorf("failed to marshal leave group request: %w", err)
 	}
 	return c.SendMessage(serverProtocol.MsgIDLeaveGroupReq, body)
+}
+
+// SendGroupTextMessage 发送群组文本消息
+func (c *ChatClient) SendGroupTextMessage(groupID uint32, content string) error {
+	if !c.isLoggedIn {
+		return errors.New("请先登录再发送消息")
+	}
+	msg := model.GroupTextMsgReq{
+		GroupID: groupID,
+		Content: content,
+	}
+	body, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal group text message: %w", err)
+	}
+	return c.SendMessage(serverProtocol.MsgIDGroupTextMsgReq, body)
+}
+
+// SendGroupHistoryMessageReq 发送获取群组历史消息请求
+func (c *ChatClient) SendGroupHistoryMessageReq(groupID uint, lastID uint, limit int) error {
+	if !c.isLoggedIn {
+		return errors.New("请先登录")
+	}
+	req := model.GroupHistoryMsgReq{
+		GroupID: groupID,
+		LastID:  lastID,
+		Limit:   limit,
+	}
+	body, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("failed to marshal group history message request: %w", err)
+	}
+	return c.SendMessage(serverProtocol.MsgIDGroupHistoryMsgReq, body)
 }

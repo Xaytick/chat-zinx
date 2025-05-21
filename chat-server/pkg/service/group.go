@@ -12,6 +12,17 @@ type IGroupService interface {
 	IsUserInGroup(userID uint, groupID uint) (bool, error)
 	GetGroupMemberIDs(groupID uint) ([]uint, error)
 
-	// GetGroupDetails(groupID uint) (*model.Group, error) // 暂未实现，后续可添加获取群详细信息（包括成员列表）
-	// GetUserGroups(userID uint) ([]*model.GroupBasicInfo, error) // 暂未实现，后续可添加获取用户加入的群列表
+	// 获取群组详情 - 新增
+	GetGroupDetails(groupID uint) (*model.Group, error)
+	// 获取用户加入的群列表 - 新增
+	GetUserGroups(userID uint) ([]*model.Group, error)
+	// 获取群组成员列表 - 新增
+	GetGroupMembers(groupID uint) ([]*model.GroupMember, error)
+	// 获取群组成员详细信息(包含用户信息) - 新增
+	GetGroupMembersWithUserInfo(groupID uint) ([]*model.GroupMemberInfo, error)
+
+	// 群组管理相关 - 新增
+	SetGroupMemberRole(operatorID uint, groupID uint, targetUserID uint, newRole string) error
+	RemoveMemberFromGroup(operatorID uint, groupID uint, targetUserID uint) error
+	UpdateGroupInfo(operatorID uint, groupID uint, updateReq *model.UpdateGroupInfoReq) error
 }

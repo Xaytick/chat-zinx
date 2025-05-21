@@ -48,7 +48,7 @@ func InitMySQL(cfg *conf.MySQLConfig) (err error) {
 	}
 
 	// 自动迁移时，请确保您的 User 模型与数据库表结构匹配 GORM 的约定或使用了正确的 gorm tags
-	err = DB.AutoMigrate(&model.User{}, &model.Group{}, &model.GroupMember{}) // Group 和 GroupMember 已是 ID uint 主键
+	err = DB.AutoMigrate(&model.User{}, &model.Group{}, &model.GroupMember{}, &model.GroupMessage{}) // 添加GroupMessage表迁移
 	if err != nil {
 		return fmt.Errorf("failed to auto migrate tables: %w", err)
 	}
@@ -143,4 +143,19 @@ func UpdateUserLastLoginInfo(userID uint) error {
 		"updated_at": time.Now(),
 	}
 	return DB.Model(&model.User{}).Where("id = ?", userID).Updates(updates).Error
+}
+
+// GetUsersByIDs 批量获取用户信息 (GORM实现)
+func GetUsersByIDs(ids []uint) ([]*model.User, error) {
+	if len(ids) == 0 {
+		return []*model.User{}, nil
+	}
+
+	var users []*model.User
+	result := DB.Where("id IN ?", ids).Find(&users)
+	if result.Error != nil {
+		return nil, fmt.Errorf("failed to get users by IDs: %w", result.Error)
+	}
+
+	return users, nil
 }

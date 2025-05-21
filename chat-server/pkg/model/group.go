@@ -66,7 +66,63 @@ type LeaveGroupReq struct {
 type GroupBasicInfo struct {
 	ID          uint   `json:"id"`
 	Name        string `json:"name"`
-	Avatar      string `json:"avatar"`
 	MemberCount uint   `json:"member_count"`
 	Description string `json:"description"`
+}
+
+// 新增模型定义
+
+// GroupMemberInfo 群组成员信息（包含用户信息）
+type GroupMemberInfo struct {
+	MemberID uint      `json:"member_id"` // GroupMember表中的ID
+	UserID   uint      `json:"user_id"`   // 用户ID
+	UserUUID string    `json:"user_uuid"` // 用户UUID
+	Username string    `json:"username"`  // 用户名
+	Role     string    `json:"role"`      // 在群组中的角色
+	JoinedAt time.Time `json:"joined_at"` // 加入时间
+	IsOnline bool      `json:"is_online"` // 在线状态
+}
+
+// GetGroupMembersReq 获取群成员列表请求
+type GetGroupMembersReq struct {
+	GroupID uint `json:"group_id" binding:"required"`
+}
+
+// GetGroupMembersResp 获取群成员列表响应
+type GetGroupMembersResp struct {
+	GroupID uint               `json:"group_id"`
+	Members []*GroupMemberInfo `json:"members"`
+	Total   int                `json:"total"`
+}
+
+// GetUserGroupsReq 获取用户加入的群列表请求
+type GetUserGroupsReq struct {
+	// 可选字段，如过滤条件等
+}
+
+// GetUserGroupsResp 获取用户加入的群列表响应
+type GetUserGroupsResp struct {
+	Groups []*GroupBasicInfo `json:"groups"`
+	Total  int               `json:"total"`
+}
+
+// UpdateGroupInfoReq 更新群组信息请求
+type UpdateGroupInfoReq struct {
+	GroupID     uint   `json:"group_id" binding:"required"`
+	Name        string `json:"name,omitempty" binding:"omitempty,min=2,max=30"`
+	Description string `json:"description,omitempty" binding:"omitempty,max=200"`
+	Avatar      string `json:"avatar,omitempty"`
+}
+
+// SetGroupMemberRoleReq 设置群组成员角色请求
+type SetGroupMemberRoleReq struct {
+	GroupID      uint   `json:"group_id" binding:"required"`
+	TargetUserID uint   `json:"target_user_id" binding:"required"`
+	NewRole      string `json:"new_role" binding:"required,oneof=admin member"`
+}
+
+// RemoveMemberReq 将成员移出群组请求
+type RemoveMemberReq struct {
+	GroupID      uint `json:"group_id" binding:"required"`
+	TargetUserID uint `json:"target_user_id" binding:"required"`
 }

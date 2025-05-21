@@ -1,6 +1,10 @@
 package service
 
 import (
+	"fmt"
+
+	"github.com/Xaytick/chat-zinx/chat-server/dao/mysql"
+	"github.com/Xaytick/chat-zinx/chat-server/pkg/model"
 	"github.com/Xaytick/chat-zinx/chat-server/pkg/storage"
 )
 
@@ -23,6 +27,14 @@ type IMessageService interface {
 
 	// GetChatRelations 获取用户的聊天关系列表
 	GetChatRelations(userID uint) ([]string, error)
+
+	// P2P 消息相关
+	SaveSingleMessage(fromUserID, toUserID uint, msgType, content string) error
+	GetChatHistory(userID, peerUserID uint, lastMsgID string, limit int) ([]*model.MessageItemResp, error)
+
+	// 群组消息相关
+	SaveGroupMessage(groupID uint, senderID uint, senderUUID, senderName, content, messageType string) (string, error)
+	GetGroupHistory(userID, groupID uint, lastID uint, limit int) (*model.GroupHistoryMsgResp, error)
 }
 
 // RedisMessageService Redis实现的消息服务
@@ -69,4 +81,74 @@ func (s *RedisMessageService) GetHistoryMessages(userID1, userID2 uint, limit in
 // GetChatRelations 获取用户的聊天关系列表
 func (s *RedisMessageService) GetChatRelations(userID uint) ([]string, error) {
 	return s.storage.GetChatRelations(userID)
+}
+
+// SaveSingleMessage 保存单聊消息
+func (s *RedisMessageService) SaveSingleMessage(fromUserID, toUserID uint, msgType, content string) error {
+	// 待实现
+	return nil
+}
+
+// GetChatHistory 获取单聊历史消息
+func (s *RedisMessageService) GetChatHistory(userID, peerUserID uint, lastMsgID string, limit int) ([]*model.MessageItemResp, error) {
+	// 待实现
+	return nil, nil
+}
+
+// SaveGroupMessage 保存群组消息
+func (s *RedisMessageService) SaveGroupMessage(groupID uint, senderID uint, senderUUID, senderName, content, messageType string) (string, error) {
+	// 使用MySQL保存群组消息
+	if messageType == "" {
+		messageType = "text" // 默认为文本消息
+	}
+
+	message, err := mysql.SaveGroupMessage(groupID, senderID, senderUUID, senderName, content, messageType)
+	if err != nil {
+		return "", fmt.Errorf("failed to save group message: %w", err)
+	}
+
+	return message.MsgID, nil
+}
+
+// GetGroupHistory 获取群组历史消息
+func (s *RedisMessageService) GetGroupHistory(userID, groupID uint, lastID uint, limit int) (*model.GroupHistoryMsgResp, error) {
+	// 1. 检查用户是否是群成员
+	isMember, err := mysql.IsUserInGroup(userID, groupID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check group membership: %w", err)
+	}
+	if !isMember {
+		return nil, fmt.Errorf("user %d is not a member of group %d", userID, groupID)
+	}
+
+	// 2. 获取历史消息
+	messages, hasMore, err := mysql.GetGroupHistoryMessages(groupID, lastID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get group history messages: %w", err)
+	}
+
+	// 3. 转换为响应格式
+	msgItems := make([]*model.GroupHistoryMsgItem, 0, len(messages))
+	for _, msg := range messages {
+		msgItem := &model.GroupHistoryMsgItem{
+			ID:          msg.ID,
+			MsgID:       msg.MsgID,
+			SenderID:    msg.SenderID,
+			SenderUUID:  msg.SenderUUID,
+			SenderName:  msg.SenderName,
+			Content:     msg.Content,
+			MessageType: msg.MessageType,
+			Timestamp:   msg.CreatedAt.Unix(),
+		}
+		msgItems = append(msgItems, msgItem)
+	}
+
+	// 4. 构建并返回响应
+	resp := &model.GroupHistoryMsgResp{
+		GroupID:  groupID,
+		Messages: msgItems,
+		HasMore:  hasMore,
+	}
+
+	return resp, nil
 }

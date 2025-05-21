@@ -34,7 +34,17 @@ const (
 	MsgIDGetGroupMembersResp // 216: 获取群成员列表响应
 	MsgIDGetUserGroupsReq    // 217: 获取用户加入的群列表请求
 	MsgIDGetUserGroupsResp   // 218: 获取用户加入的群列表响应
-	// 后续可以添加更多群管理相关的消息ID，如踢人、授权等
+	// 后续添加更多群管理相关的消息ID
+	MsgIDUpdateGroupInfoReq  // 219: 更新群组信息请求
+	MsgIDUpdateGroupInfoResp // 220: 更新群组信息响应
+	MsgIDSetMemberRoleReq    // 221: 设置成员角色请求
+	MsgIDSetMemberRoleResp   // 222: 设置成员角色响应
+	MsgIDRemoveMemberReq     // 223: 移除群成员请求
+	MsgIDRemoveMemberResp    // 224: 移除群成员响应
+	MsgIDGetGroupDetailsReq  // 225: 获取群组详情请求
+	MsgIDGetGroupDetailsResp // 226: 获取群组详情响应
+	MsgIDGroupHistoryMsgReq  // 227: 获取群聊历史消息请求
+	MsgIDGroupHistoryMsgResp // 228: 获取群聊历史消息响应
 
 	// 群组消息相关 310 - 319
 	MsgIDGroupTextMsgReq  uint32 = 310 // C->S 发送群组文本消息请求

@@ -2,9 +2,8 @@ package router
 
 import (
 	"encoding/json"
-	"fmt"
-
 	"errors"
+	"fmt"
 
 	"github.com/Xaytick/chat-zinx/chat-server/global"
 	"github.com/Xaytick/chat-zinx/chat-server/pkg/model"
@@ -34,7 +33,7 @@ func (r *HistoryMsgRouter) Handle(request ziface.IRequest) {
 	}
 
 	// 2. 解析请求
-	var req model.HistoryMsgReq
+	var req model.LegacyHistoryMsgReq
 	if err := json.Unmarshal(request.GetData(), &req); err != nil {
 		sendHistoryResponse(request, 2, "请求格式错误", nil)
 		return
@@ -42,7 +41,6 @@ func (r *HistoryMsgRouter) Handle(request ziface.IRequest) {
 
 	// 3. 确定目标用户
 	var targetUser *model.User
-
 	if req.TargetUserUUID != "" {
 		targetUser, err = global.UserService.GetUserByUUID(req.TargetUserUUID)
 		if err != nil {
@@ -97,7 +95,7 @@ func (r *HistoryMsgRouter) Handle(request ziface.IRequest) {
 
 // 发送历史消息响应
 func sendHistoryResponse(request ziface.IRequest, code uint32, message string, data []map[string]interface{}) {
-	response := model.HistoryMsgResp{
+	response := model.LegacyHistoryMsgResp{
 		Code:    code,
 		Message: message,
 		Data:    data,
