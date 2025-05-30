@@ -1,22 +1,36 @@
 {
   "database": {
     "master": {
-      "dsn": "user:password@tcp(master-db:3306)/chat_db?charset=utf8mb4&parseTime=True&loc=Local",
+      "dsn": "chatuser:chatpassword@tcp(mysql-master:3306)/chat_app?charset=utf8mb4&parseTime=True&loc=Local",
       "max_open_conns": 100,
       "max_idle_conns": 10,
       "conn_max_lifetime": 3600000000000
     },
     "slaves": [
       {
-        "dsn": "user:password@tcp(slave1-db:3306)/chat_db?charset=utf8mb4&parseTime=True&loc=Local",
+        "dsn": "chatuser:chatpassword@tcp(mysql-slave1:3306)/chat_app?charset=utf8mb4&parseTime=True&loc=Local",
         "weight": 1,
         "max_open_conns": 50,
         "max_idle_conns": 5,
         "conn_max_lifetime": 3600000000000
       },
       {
-        "dsn": "user:password@tcp(slave2-db:3306)/chat_db?charset=utf8mb4&parseTime=True&loc=Local",
+        "dsn": "chatuser:chatpassword@tcp(mysql-slave2:3306)/chat_app?charset=utf8mb4&parseTime=True&loc=Local",
         "weight": 1,
+        "max_open_conns": 50,
+        "max_idle_conns": 5,
+        "conn_max_lifetime": 3600000000000
+      }
+    ],
+    "shards": [
+      {
+        "dsn": "chatuser:chatpassword@tcp(mysql-shard0:3306)/chat_app_shard_00?charset=utf8mb4&parseTime=True&loc=Local",
+        "max_open_conns": 50,
+        "max_idle_conns": 5,
+        "conn_max_lifetime": 3600000000000
+      },
+      {
+        "dsn": "chatuser:chatpassword@tcp(mysql-shard1:3306)/chat_app_shard_01?charset=utf8mb4&parseTime=True&loc=Local",
         "max_open_conns": 50,
         "max_idle_conns": 5,
         "conn_max_lifetime": 3600000000000
@@ -24,17 +38,12 @@
     ],
     "sharding": {
       "enabled": true,
-      "shard_count": 8,
+      "shard_count": 2,
       "strategy": "hash",
       "tables": [
         {
-          "table_name": "messages",
-          "shard_key": "from_user_id",
-          "shard_suffix": "_%02d"
-        },
-        {
           "table_name": "group_messages",
-          "shard_key": "group_id", 
+          "shard_key": "group_id",
           "shard_suffix": "_%02d"
         },
         {
@@ -68,6 +77,16 @@
       "session_cache": 1800000000000
     }
   },
+  "_deployment_note": {
+    "environment": "Docker Compose",
+    "master_slave_replication": "自动配置",
+    "sharding_databases": "2个分片，支持动态扩展到8个",
+    "connection_info": {
+      "master": "mysql-master:3306",
+      "slaves": ["mysql-slave1:3306", "mysql-slave2:3306"],
+      "shards": ["mysql-shard0:3306", "mysql-shard1:3306"]
+    }
+  },
   "_comments": {
     "time_format_note": "所有时间配置使用纳秒数值：1s = 1000000000ns, 1m = 60000000000ns, 1h = 3600000000000ns",
     "mysql_master_slave_config": {
@@ -86,7 +105,20 @@
     "sharding_design": {
       "user_table": "按用户ID进行哈希分片，保证用户数据的均匀分布",
       "message_table": "单聊消息按发送者ID分片，群聊消息按群组ID分片",
-      "database_naming": "chat_db_shard_00, chat_db_shard_01, ..., chat_db_shard_07"
+      "database_naming": "chat_app_shard_00, chat_app_shard_01, ..., chat_app_shard_07"
     }
+  },
+  "_migration_plan": {
+    "current_database": "chat_app (单库)",
+    "target_architecture": "读写分离 + 2个分片",
+    "tables_to_shard": ["users", "group_messages"],
+    "tables_keep_central": ["groups", "group_members"],
+    "migration_steps": [
+      "1. 启动Docker环境",
+      "2. 导出现有数据",
+      "3. 创建新表结构",
+      "4. 数据迁移到分片",
+      "5. 切换应用配置"
+    ]
   }
 } 

@@ -1,0 +1,25 @@
+[mysqld]
+# 数据库字符集
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+
+# 连接配置
+max_connections = 500
+max_connect_errors = 1000
+
+# 缓存配置
+innodb_buffer_pool_size = 128M
+innodb_log_file_size = 32M
+
+# 性能配置
+innodb_flush_log_at_trx_commit = 2
+sync_binlog = 0
+
+# 安全配置
+skip-name-resolve = 1
+
+# 日志配置
+general_log = 0
+slow_query_log = 1
+slow_query_log_file = /var/log/mysql/slow.log
+long_query_time = 2 

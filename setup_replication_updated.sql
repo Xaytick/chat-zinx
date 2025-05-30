@@ -1,0 +1,17 @@
+-- 从库复制配置 (更新版)
+STOP SLAVE;
+RESET SLAVE ALL;
+
+CHANGE MASTER TO 
+  MASTER_HOST='mysql-master',
+  MASTER_USER='replication_user',
+  MASTER_PASSWORD='replication_password',
+  MASTER_LOG_FILE='mysql-bin.000003',
+  MASTER_LOG_POS=3757,
+  MASTER_CONNECT_RETRY=60,
+  GET_MASTER_PUBLIC_KEY=1;
+
+START SLAVE;
+
+-- 显示复制状态
+SHOW SLAVE STATUS\G 

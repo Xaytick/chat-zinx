@@ -7,15 +7,15 @@ services:
     container_name: chat-mysql-master
     environment:
       MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: chat_db
+      MYSQL_DATABASE: chat_app
       MYSQL_USER: chatuser
       MYSQL_PASSWORD: chatpassword
     ports:
-      - "3306:3306"
+      - "3316:3306"
     volumes:
       - mysql_master_data:/var/lib/mysql
-      - ./scripts/mysql/master.cnf:/etc/mysql/conf.d/master.cnf
-      - ./scripts/mysql/init-master.sql:/docker-entrypoint-initdb.d/init-master.sql
+      - ./chat-server/scripts/mysql/master.cnf:/etc/mysql/conf.d/master.cnf
+      - ./chat-server/scripts/mysql/init-master.sql:/docker-entrypoint-initdb.d/init-master.sql
     command: --server-id=1 --log-bin=mysql-bin --binlog-format=ROW
     networks:
       - chat-network
@@ -26,14 +26,14 @@ services:
     container_name: chat-mysql-slave1
     environment:
       MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: chat_db
+      MYSQL_DATABASE: chat_app
       MYSQL_USER: chatuser
       MYSQL_PASSWORD: chatpassword
     ports:
-      - "3307:3306"
+      - "3317:3306"
     volumes:
       - mysql_slave1_data:/var/lib/mysql
-      - ./scripts/mysql/slave.cnf:/etc/mysql/conf.d/slave.cnf
+      - ./chat-server/scripts/mysql/slave.cnf:/etc/mysql/conf.d/slave.cnf
     command: --server-id=2 --relay-log=mysql-relay-bin --read-only=1
     depends_on:
       - mysql-master
@@ -46,14 +46,14 @@ services:
     container_name: chat-mysql-slave2
     environment:
       MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: chat_db
+      MYSQL_DATABASE: chat_app
       MYSQL_USER: chatuser
       MYSQL_PASSWORD: chatpassword
     ports:
-      - "3308:3306"
+      - "3318:3306"
     volumes:
       - mysql_slave2_data:/var/lib/mysql
-      - ./scripts/mysql/slave.cnf:/etc/mysql/conf.d/slave.cnf
+      - ./chat-server/scripts/mysql/slave.cnf:/etc/mysql/conf.d/slave.cnf
     command: --server-id=3 --relay-log=mysql-relay-bin --read-only=1
     depends_on:
       - mysql-master
@@ -66,15 +66,15 @@ services:
     container_name: chat-mysql-shard0
     environment:
       MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: chat_db_shard_00
+      MYSQL_DATABASE: chat_app_shard_00
       MYSQL_USER: chatuser
       MYSQL_PASSWORD: chatpassword
     ports:
       - "3320:3306"
     volumes:
       - mysql_shard0_data:/var/lib/mysql
-      - ./scripts/mysql/shard.cnf:/etc/mysql/conf.d/shard.cnf
-      - ./scripts/mysql/init-shard.sql:/docker-entrypoint-initdb.d/init-shard.sql
+      - ./chat-server/scripts/mysql/shard.cnf:/etc/mysql/conf.d/shard.cnf
+      - ./chat-server/scripts/mysql/init-shard.sql:/docker-entrypoint-initdb.d/init-shard.sql
     networks:
       - chat-network
 
@@ -84,15 +84,15 @@ services:
     container_name: chat-mysql-shard1
     environment:
       MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: chat_db_shard_01
+      MYSQL_DATABASE: chat_app_shard_01
       MYSQL_USER: chatuser
       MYSQL_PASSWORD: chatpassword
     ports:
       - "3321:3306"
     volumes:
       - mysql_shard1_data:/var/lib/mysql
-      - ./scripts/mysql/shard.cnf:/etc/mysql/conf.d/shard.cnf
-      - ./scripts/mysql/init-shard.sql:/docker-entrypoint-initdb.d/init-shard.sql
+      - ./chat-server/scripts/mysql/shard.cnf:/etc/mysql/conf.d/shard.cnf
+      - ./chat-server/scripts/mysql/init-shard.sql:/docker-entrypoint-initdb.d/init-shard.sql
     networks:
       - chat-network
 
@@ -111,15 +111,15 @@ services:
   # 聊天服务器
   chat-server:
     build:
-      context: .
+      context: ./chat-server
       dockerfile: Dockerfile
     container_name: chat-server
     ports:
       - "9000:9000"
       - "8080:8080"  # HTTP API端口
     volumes:
-      - ./conf:/app/conf
-      - ./logs:/app/logs
+      - ./chat-server/conf:/app/conf
+      - ./chat-server/logs:/app/logs
     environment:
       - CONFIG_PATH=/app/conf/database.json
       - LOG_LEVEL=info

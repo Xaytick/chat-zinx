@@ -1,19 +1,19 @@
 {
     "Name": "zinx-chat-server",
-    "Host": "127.0.0.1",
+    "Host": "0.0.0.0",
 
     "Database": {
       "MySQL": {
-        "Host": "127.0.0.1",
+        "Host": "mysql-master",
         "Port": 3306,
-        "User": "root",
-        "Password": "20020130",
+        "User": "chatuser",
+        "Password": "chatpassword",
         "Database": "chat_app",
         "MaxOpenConns": 100,
         "MaxIdleConns": 10
       },
       "Redis": {
-        "Host": "127.0.0.1",
+        "Host": "redis",
         "Port": 6379,
         "Password": "",
         "DB": 0,
