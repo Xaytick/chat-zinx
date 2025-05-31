@@ -32,5 +32,22 @@
         "SessionExpiration": 86400
       },
       "SignatureSecret": "your-signature-secret-please-change-in-production"
+    },
+    "redis_cluster": {
+        "addrs": [
+            "localhost:7001",
+            "localhost:7002",
+            "localhost:7003",
+            "localhost:7004",
+            "localhost:7005",
+            "localhost:7006"
+        ],
+        "password": "",
+        "pool_size": 50,
+        "min_idle_conns": 20,
+        "max_retries": 3,
+        "dial_timeout": "5s",
+        "read_timeout": "3s",
+        "write_timeout": "3s"
     }
   }
