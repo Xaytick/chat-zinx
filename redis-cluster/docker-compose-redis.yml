@@ -1,0 +1,127 @@
+version: '3.8'
+
+services:
+  # Redis Cluster - 主节点
+  redis-master-1:
+    image: redis:7-alpine
+    container_name: redis-master-1
+    ports:
+      - "7001:7001"
+      - "17001:17001"
+    volumes:
+      - redis_master_1_data:/data
+      - ./redis-configs/redis-7001.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
+    networks:
+      - chat-network
+
+  redis-master-2:
+    image: redis:7-alpine
+    container_name: redis-master-2
+    ports:
+      - "7002:7002"
+      - "17002:17002"
+    volumes:
+      - redis_master_2_data:/data
+      - ./redis-configs/redis-7002.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
+    networks:
+      - chat-network
+
+  redis-master-3:
+    image: redis:7-alpine
+    container_name: redis-master-3
+    ports:
+      - "7003:7003"
+      - "17003:17003"
+    volumes:
+      - redis_master_3_data:/data
+      - ./redis-configs/redis-7003.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
+    networks:
+      - chat-network
+
+  # Redis Cluster - 从节点
+  redis-slave-1:
+    image: redis:7-alpine
+    container_name: redis-slave-1
+    ports:
+      - "7004:7004"
+      - "17004:17004"
+    volumes:
+      - redis_slave_1_data:/data
+      - ./redis-configs/redis-7004.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
+    depends_on:
+      - redis-master-1
+    networks:
+      - chat-network
+
+  redis-slave-2:
+    image: redis:7-alpine
+    container_name: redis-slave-2
+    ports:
+      - "7005:7005"
+      - "17005:17005"
+    volumes:
+      - redis_slave_2_data:/data
+      - ./redis-configs/redis-7005.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
+    depends_on:
+      - redis-master-2
+    networks:
+      - chat-network
+
+  redis-slave-3:
+    image: redis:7-alpine
+    container_name: redis-slave-3
+    ports:
+      - "7006:7006"
+      - "17006:17006"
+    volumes:
+      - redis_slave_3_data:/data
+      - ./redis-configs/redis-7006.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
+    depends_on:
+      - redis-master-3
+    networks:
+      - chat-network
+
+  # Redis Cluster 管理工具
+  redis-cluster-init:
+    image: redis:7-alpine
+    container_name: redis-cluster-init
+    command: >
+      sh -c "
+        sleep 10 &&
+        redis-cli --cluster create 
+        redis-master-1:7001 
+        redis-master-2:7002 
+        redis-master-3:7003 
+        redis-slave-1:7004 
+        redis-slave-2:7005 
+        redis-slave-3:7006 
+        --cluster-replicas 1 
+        --cluster-yes
+      "
+    depends_on:
+      - redis-master-1
+      - redis-master-2
+      - redis-master-3
+      - redis-slave-1
+      - redis-slave-2
+      - redis-slave-3
+    networks:
+      - chat-network
+
+volumes:
+  redis_master_1_data:
+  redis_master_2_data:
+  redis_master_3_data:
+  redis_slave_1_data:
+  redis_slave_2_data:
+  redis_slave_3_data:
+
+networks:
+  chat-network:
+    external: true 
