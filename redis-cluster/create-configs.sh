@@ -4,6 +4,7 @@
 
 # 定义节点信息
 declare -A nodes=(
+    ["7001"]="redis-master-1"
     ["7002"]="redis-master-2"
     ["7003"]="redis-master-3"
     ["7004"]="redis-slave-1"
