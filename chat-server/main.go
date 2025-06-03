@@ -37,7 +37,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("初始化Redis失败: %v", err)
 	}
-	fmt.Println("Redis连接成功!")
+
+	// 显示 Redis 连接模式
+	if redis.IsClusterEnabled() {
+		fmt.Println("Redis集群模式连接成功!")
+		fmt.Printf("集群节点: %v\n", conf.GetRedisConfig().ClusterAddrs)
+	} else {
+		fmt.Println("Redis单机模式连接成功!")
+		fmt.Printf("Redis地址: %s:%d\n", conf.GetRedisConfig().Host, conf.GetRedisConfig().Port)
+	}
 
 	// 3. 初始化所有服务
 	fmt.Println("初始化服务...")

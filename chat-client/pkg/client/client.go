@@ -47,7 +47,7 @@ func NewChatClient(serverAddr string) (*ChatClient, error) {
 
 // Close 关闭客户端连接
 func (c *ChatClient) Close() {
-	c.StopHeartbeat()
+		c.StopHeartbeat()
 	if c.Conn != nil {
 		c.Conn.Close()
 	}

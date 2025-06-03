@@ -13,11 +13,23 @@
         "MaxIdleConns": 10
       },
       "Redis": {
-        "Host": "redis",
-        "Port": 6379,
+        "Host": "redis-master-1",
+        "Port": 7001,
         "Password": "",
         "DB": 0,
-        "MessageExpiration": 604800
+        "MessageExpiration": 604800,
+        "ClusterEnabled": true,
+        "ClusterAddrs": [
+          "redis-master-1:7001",
+          "redis-master-2:7002", 
+          "redis-master-3:7003",
+          "redis-slave-1:7004",
+          "redis-slave-2:7005",
+          "redis-slave-3:7006"
+        ],
+        "PoolSize": 50,
+        "MinIdleConns": 20,
+        "MaxRetries": 3
       }
     },
     "Auth": {

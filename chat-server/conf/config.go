@@ -31,6 +31,13 @@ type RedisConfig struct {
 	Password          string `json:"Password"`          // 密码
 	DB                int    `json:"DB"`                // 数据库
 	MessageExpiration int    `json:"MessageExpiration"` // 消息过期时间
+
+	// Redis Cluster 配置
+	ClusterEnabled bool     `json:"ClusterEnabled"` // 是否启用集群模式
+	ClusterAddrs   []string `json:"ClusterAddrs"`   // 集群节点地址
+	PoolSize       int      `json:"PoolSize"`       // 连接池大小
+	MinIdleConns   int      `json:"MinIdleConns"`   // 最小空闲连接数
+	MaxRetries     int      `json:"MaxRetries"`     // 最大重试次数
 }
 
 // HeartbeatConfig 心跳配置结构体

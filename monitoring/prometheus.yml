@@ -1,0 +1,37 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'chat-server'
+    static_configs:
+      - targets: ['chat-server:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  - job_name: 'redis-cluster'
+    static_configs:
+      - targets: 
+        - 'redis-master-1:7001'
+        - 'redis-master-2:7002'
+        - 'redis-master-3:7003'
+        - 'redis-slave-1:7004'
+        - 'redis-slave-2:7005'
+        - 'redis-slave-3:7006'
+
+  - job_name: 'mysql'
+    static_configs:
+      - targets: 
+        - 'mysql-master:3306'
+        - 'mysql-slave1:3306'
+        - 'mysql-slave2:3306'
+        - 'mysql-shard0:3306'
+        - 'mysql-shard1:3306' 

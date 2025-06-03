@@ -3,6 +3,7 @@ package global
 import (
 	"fmt"
 
+	"github.com/Xaytick/chat-zinx/chat-server/pkg/cache"
 	"github.com/Xaytick/chat-zinx/chat-server/pkg/service"
 	"github.com/Xaytick/zinx/ziface"
 )
@@ -19,10 +20,16 @@ var (
 
 	// GroupService 群组服务实例
 	GroupService service.IGroupService
+
+	// CacheService 缓存服务实例
+	CacheService cache.CacheService
 )
 
 // InitServices 初始化所有服务
 func InitServices() {
+	// 初始化缓存服务
+	CacheService = cache.NewCacheService()
+
 	// 初始化用户服务(使用MySQL实现)
 	UserService = service.NewMySQLUserService()
 
