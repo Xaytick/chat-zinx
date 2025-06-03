@@ -31,7 +31,7 @@ type RedisClusterManager struct {
 // NewRedisClusterManager 创建Redis集群管理器
 func NewRedisClusterManager(config *RedisClusterConfig) (*RedisClusterManager, error) {
 	if len(config.Addrs) == 0 {
-		return nil, fmt.Errorf("Redis cluster addrs cannot be empty")
+		return nil, fmt.Errorf("redis cluster addrs cannot be empty")
 	}
 
 	// 设置默认值
