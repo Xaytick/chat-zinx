@@ -32,8 +32,8 @@ try {
 
 # Generate Redis cluster config files
 Write-Host "`n3. Checking Redis cluster configuration files..." -ForegroundColor Yellow
-Push-Location redis-cluster
-if (Test-Path "create-configs.sh") {
+Push-Location infrastructure/redis-cluster
+if (Test-Path "scripts/create-configs.sh") {
     Write-Host "[INFO] Found create-configs.sh, may need to run in Git Bash or WSL" -ForegroundColor Cyan
     Write-Host "  Or check if redis-configs directory already has config files" -ForegroundColor Cyan
 } 
@@ -110,7 +110,7 @@ Write-Host "- Slave 2: localhost:7005" -ForegroundColor White
 Write-Host "- Slave 3: localhost:7006" -ForegroundColor White
 
 Write-Host "`nUseful Commands:" -ForegroundColor Cyan
-Write-Host "- Check status: .\check-cluster.ps1" -ForegroundColor White
+Write-Host "- Check status: .\scripts\deployment\check-cluster.ps1" -ForegroundColor White
 Write-Host "- View logs: docker-compose logs chat-server" -ForegroundColor White
 Write-Host "- Stop services: docker-compose down" -ForegroundColor White
 Write-Host "- View all containers: docker ps" -ForegroundColor White

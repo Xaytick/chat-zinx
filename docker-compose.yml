@@ -15,7 +15,7 @@ services:
     volumes:
       - mysql_master_data:/var/lib/mysql
       - ./chat-server/scripts/mysql/master.cnf:/etc/mysql/conf.d/master.cnf
-      - ./chat-server/scripts/mysql/init-master.sql:/docker-entrypoint-initdb.d/init-master.sql
+      - ./scripts/database/mysql/init-master.sql:/docker-entrypoint-initdb.d/init-master.sql
     command: --server-id=1 --log-bin=mysql-bin --binlog-format=ROW
     networks:
       - chat-network
@@ -105,7 +105,7 @@ services:
       - "17001:17001"
     volumes:
       - redis_master_1_data:/data
-      - ./redis-cluster/redis-configs/redis-7001.conf:/usr/local/etc/redis/redis.conf
+      - ./infrastructure/redis-cluster/redis-configs/redis-7001.conf:/usr/local/etc/redis/redis.conf
     command: redis-server /usr/local/etc/redis/redis.conf
     networks:
       - chat-network
@@ -118,7 +118,7 @@ services:
       - "17002:17002"
     volumes:
       - redis_master_2_data:/data
-      - ./redis-cluster/redis-configs/redis-7002.conf:/usr/local/etc/redis/redis.conf
+      - ./infrastructure/redis-cluster/redis-configs/redis-7002.conf:/usr/local/etc/redis/redis.conf
     command: redis-server /usr/local/etc/redis/redis.conf
     networks:
       - chat-network
@@ -131,7 +131,7 @@ services:
       - "17003:17003"
     volumes:
       - redis_master_3_data:/data
-      - ./redis-cluster/redis-configs/redis-7003.conf:/usr/local/etc/redis/redis.conf
+      - ./infrastructure/redis-cluster/redis-configs/redis-7003.conf:/usr/local/etc/redis/redis.conf
     command: redis-server /usr/local/etc/redis/redis.conf
     networks:
       - chat-network
@@ -145,7 +145,7 @@ services:
       - "17004:17004"
     volumes:
       - redis_slave_1_data:/data
-      - ./redis-cluster/redis-configs/redis-7004.conf:/usr/local/etc/redis/redis.conf
+      - ./infrastructure/redis-cluster/redis-configs/redis-7004.conf:/usr/local/etc/redis/redis.conf
     command: redis-server /usr/local/etc/redis/redis.conf
     depends_on:
       - redis-master-1
@@ -160,7 +160,7 @@ services:
       - "17005:17005"
     volumes:
       - redis_slave_2_data:/data
-      - ./redis-cluster/redis-configs/redis-7005.conf:/usr/local/etc/redis/redis.conf
+      - ./infrastructure/redis-cluster/redis-configs/redis-7005.conf:/usr/local/etc/redis/redis.conf
     command: redis-server /usr/local/etc/redis/redis.conf
     depends_on:
       - redis-master-2
@@ -175,7 +175,7 @@ services:
       - "17006:17006"
     volumes:
       - redis_slave_3_data:/data
-      - ./redis-cluster/redis-configs/redis-7006.conf:/usr/local/etc/redis/redis.conf
+      - ./infrastructure/redis-cluster/redis-configs/redis-7006.conf:/usr/local/etc/redis/redis.conf
     command: redis-server /usr/local/etc/redis/redis.conf
     depends_on:
       - redis-master-3
@@ -258,7 +258,7 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./infrastructure/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -276,8 +276,8 @@ services:
       - "3000:3000"
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
-      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+      - ./infrastructure/monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./infrastructure/monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
     networks:
