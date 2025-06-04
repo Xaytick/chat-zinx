@@ -8,9 +8,21 @@ import (
 	"github.com/Xaytick/zinx/ziface"
 )
 
+// Config 配置结构体
+type AppConfig struct {
+	IsDev      bool   `json:"is_dev"`
+	Host       string `json:"host"`
+	Port       int    `json:"port"`
+	NatsURLs   string `json:"nats_urls"`
+	ConsulAddr string `json:"consul_addr"`
+}
+
 var (
 	// GlobalServer 全局服务器实例
 	GlobalServer ziface.IServer
+
+	// DistributedManager 分布式管理器实例 (使用interface{}避免循环引用)
+	DistributedManager interface{}
 
 	// UserService 用户服务实例
 	UserService service.IUserService
@@ -23,10 +35,24 @@ var (
 
 	// CacheService 缓存服务实例
 	CacheService cache.CacheService
+
+	// Config 应用配置
+	Config *AppConfig
 )
 
 // InitServices 初始化所有服务
 func InitServices() {
+	// 初始化配置
+	if Config == nil {
+		Config = &AppConfig{
+			IsDev:      false,
+			Host:       "localhost",
+			Port:       9000,
+			NatsURLs:   "nats://localhost:4222",
+			ConsulAddr: "localhost:8500",
+		}
+	}
+
 	// 初始化缓存服务
 	CacheService = cache.NewCacheService()
 

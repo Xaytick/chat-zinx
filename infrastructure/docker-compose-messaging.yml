@@ -1,0 +1,147 @@
+version: '3.8'
+
+services:
+  # NATS Cluster
+  nats-1:
+    image: nats:latest
+    container_name: nats-1
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: ["-c", "/etc/nats/nats.conf"]
+    volumes:
+      - nats1_data:/data
+      - ./nats/nats-1.conf:/etc/nats/nats.conf:ro
+    networks:
+      - chat-network
+    restart: unless-stopped
+
+  nats-2:
+    image: nats:latest
+    container_name: nats-2
+    ports:
+      - "4223:4222"
+      - "8223:8222"
+    command: ["-c", "/etc/nats/nats.conf"]
+    volumes:
+      - nats2_data:/data
+      - ./nats/nats-2.conf:/etc/nats/nats.conf:ro
+    networks:
+      - chat-network
+    restart: unless-stopped
+    depends_on:
+      - nats-1
+
+  nats-3:
+    image: nats:latest
+    container_name: nats-3
+    ports:
+      - "4224:4222"
+      - "8224:8222"
+    command: ["-c", "/etc/nats/nats.conf"]
+    volumes:
+      - nats3_data:/data
+      - ./nats/nats-3.conf:/etc/nats/nats.conf:ro
+    networks:
+      - chat-network
+    restart: unless-stopped
+    depends_on:
+      - nats-1
+
+  # Consul Cluster
+  consul-1:
+    image: hashicorp/consul:latest
+    container_name: consul-1
+    ports:
+      - "8500:8500"
+      - "8600:8600/udp"
+    command:
+      - "consul"
+      - "agent"
+      - "-server"
+      - "-bootstrap-expect=3"
+      - "-datacenter=dc1"
+      - "-data-dir=/consul/data"
+      - "-node=consul-1"
+      - "-bind=0.0.0.0"
+      - "-client=0.0.0.0"
+      - "-retry-join=consul-2"
+      - "-retry-join=consul-3"
+      - "-ui"
+    volumes:
+      - consul1_data:/consul/data
+    networks:
+      - chat-network
+    restart: unless-stopped
+
+  consul-2:
+    image: hashicorp/consul:latest
+    container_name: consul-2
+    ports:
+      - "8501:8500"
+    command:
+      - "consul"
+      - "agent"
+      - "-server"
+      - "-bootstrap-expect=3"
+      - "-datacenter=dc1"
+      - "-data-dir=/consul/data"
+      - "-node=consul-2"
+      - "-bind=0.0.0.0"
+      - "-client=0.0.0.0"
+      - "-retry-join=consul-1"
+      - "-retry-join=consul-3"
+    volumes:
+      - consul2_data:/consul/data
+    networks:
+      - chat-network
+    restart: unless-stopped
+
+  consul-3:
+    image: hashicorp/consul:latest
+    container_name: consul-3
+    ports:
+      - "8502:8500"
+    command:
+      - "consul"
+      - "agent"
+      - "-server"
+      - "-bootstrap-expect=3"
+      - "-datacenter=dc1"
+      - "-data-dir=/consul/data"
+      - "-node=consul-3"
+      - "-bind=0.0.0.0"
+      - "-client=0.0.0.0"
+      - "-retry-join=consul-1"
+      - "-retry-join=consul-2"
+    volumes:
+      - consul3_data:/consul/data
+    networks:
+      - chat-network
+    restart: unless-stopped
+
+  # Load Balancer (nginx)
+  nginx-lb:
+    image: nginx:alpine
+    container_name: nginx-lb
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - chat-network
+    restart: unless-stopped
+    depends_on:
+      - consul-1
+
+volumes:
+  nats1_data:
+  nats2_data:
+  nats3_data:
+  consul1_data:
+  consul2_data:
+  consul3_data:
+
+networks:
+  chat-network:
+    external: true 
